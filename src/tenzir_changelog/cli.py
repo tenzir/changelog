@@ -6,9 +6,9 @@ import json
 import sys
 import textwrap
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
 import click
 from rich.table import Table
@@ -396,9 +396,10 @@ def _prompt_entry_body(initial: str = "") -> str:
     return _mask_comment_block(edited)
 
 
-def _prompt_text(label: str, **kwargs) -> str:
+def _prompt_text(label: str, **kwargs: Any) -> str:
     prompt_suffix = kwargs.pop("prompt_suffix", ": ")
-    return click.prompt(click.style(label, bold=True), prompt_suffix=prompt_suffix, **kwargs)
+    result = click.prompt(click.style(label, bold=True), prompt_suffix=prompt_suffix, **kwargs)
+    return str(result)
 
 
 def _prompt_optional(prompt: str, default: Optional[str] = None) -> Optional[str]:
@@ -614,7 +615,7 @@ def add(
         except ValueError as exc:
             raise click.ClickException(f"PR value '{pr_value}' must be numeric.") from exc
 
-    metadata = {
+    metadata: dict[str, Any] = {
         "title": title,
         "type": entry_type,
         "projects": project_list,
@@ -664,7 +665,7 @@ def release_create(
     version: str,
     title: Optional[str],
     description: str,
-    release_date,
+    release_date: Optional[datetime],
     intro_file: Optional[Path],
 ) -> None:
     """Create a release manifest from unused entries."""

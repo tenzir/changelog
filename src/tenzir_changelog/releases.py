@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable as IterableCollection
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -45,11 +46,27 @@ def _parse_frontmatter(path: Path) -> tuple[dict[str, object], str | None]:
     return data, intro or None
 
 
+def _parse_created_date(raw_value: object | None) -> date:
+    if raw_value is None:
+        return date.today()
+    return date.fromisoformat(str(raw_value))
+
+
+def _normalize_entries_field(raw_value: object | None) -> list[str]:
+    if raw_value is None:
+        return []
+    if isinstance(raw_value, str):
+        return [raw_value]
+    if isinstance(raw_value, IterableCollection):
+        return [str(item) for item in raw_value]
+    return [str(raw_value)]
+
+
 def iter_release_manifests(project_root: Path) -> Iterable[ReleaseManifest]:
     """Yield release manifests from disk."""
     directory = release_directory(project_root)
     if not directory.exists():
-        return []
+        return
 
     paths = sorted(list(directory.glob("*.md")))
     if not paths:
@@ -83,13 +100,16 @@ def iter_release_manifests(project_root: Path) -> Iterable[ReleaseManifest]:
             elif not intro:
                 intro = body_text
 
+        created_value = _parse_created_date(data.get("created"))
+        entries_value = _normalize_entries_field(data.get("entries"))
+
         manifest = ReleaseManifest(
             version=str(data.get("version") or path.stem),
             title=str(data.get("title", "")),
             description=description,
             project=str(project_value or ""),
-            created=date.fromisoformat(data.get("created", date.today().isoformat())),
-            entries=[str(entry) for entry in data.get("entries") or []],
+            created=created_value,
+            entries=entries_value,
             intro=intro,
             path=path,
         )
@@ -121,12 +141,12 @@ def write_release_manifest(project_root: Path, manifest: ReleaseManifest) -> Pat
     path = directory / f"{manifest.version}.md"
     if path.exists():
         raise FileExistsError(f"Release manifest {path} already exists")
-    payload = {
+    payload: dict[str, object] = {
         "version": manifest.version,
         "title": manifest.title,
         "project": manifest.project,
         "created": manifest.created.isoformat(),
-        "entries": manifest.entries,
+        "entries": list(manifest.entries),
     }
     frontmatter = _format_frontmatter(payload)
     body_parts = []

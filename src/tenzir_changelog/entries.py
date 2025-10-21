@@ -80,7 +80,7 @@ def iter_entries(project_root: Path) -> Iterable[Entry]:
     """Yield changelog entries from disk."""
     directory = entry_directory(project_root)
     if not directory.exists():
-        return []
+        return
     for path in sorted(directory.glob("*.md")):
         yield read_entry(path)
 

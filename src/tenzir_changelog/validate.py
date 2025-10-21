@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable
 
 from .config import Config
 from .entries import ENTRY_TYPES, Entry, iter_entries
-from .releases import iter_release_manifests
+from .releases import ReleaseManifest, iter_release_manifests
 
 
 @dataclass
@@ -41,7 +41,11 @@ def validate_entry(entry: Entry, config: Config) -> Iterable[ValidationIssue]:
             )
 
 
-def validate_release_ids(entries: Iterable[Entry], releases, issues: List[ValidationIssue]) -> None:
+def validate_release_ids(
+    entries: Iterable[Entry],
+    releases: Iterable[ReleaseManifest],
+    issues: list[ValidationIssue],
+) -> None:
     """Ensure release manifests reference existing entry IDs."""
     entry_ids = {entry.entry_id for entry in entries}
     for manifest in releases:
