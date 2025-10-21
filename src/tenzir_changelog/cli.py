@@ -229,8 +229,8 @@ def _filter_entries_by_project(
         return list(entries)
     filtered: list[Entry] = []
     for entry in entries:
-        entry_projects = set(entry.projects or [default_project])
-        if entry_projects.intersection(projects):
+        entry_project = entry.project or default_project
+        if entry_project and entry_project in projects:
             filtered.append(entry)
     return filtered
 
@@ -249,7 +249,7 @@ def _entries_before_or_equal_version(project_root: Path, version: str) -> set[st
 def _render_entries(entries: Iterable[Entry], release_index: dict[str, list[str]]) -> None:
     table = Table(show_lines=False, expand=True)
     table.add_column("Date", style="yellow", no_wrap=True)
-    table.add_column("Projects", style="green", no_wrap=True)
+    table.add_column("Project", style="green", no_wrap=True)
     table.add_column("Version", style="cyan", no_wrap=True)
     table.add_column("Title", style="bold", overflow="fold", max_width=44)
     table.add_column("Type", style="magenta", no_wrap=True)
@@ -280,7 +280,7 @@ def _render_entries(entries: Iterable[Entry], release_index: dict[str, list[str]
         version_display = ", ".join(versions) if versions else "—"
         table.add_row(
             created_display,
-            ", ".join(entry.projects) or "—",
+            entry.project or "—",
             version_display,
             metadata.get("title", "Untitled"),
             type_text,
@@ -473,7 +473,7 @@ def _entry_to_dict(
         "title": metadata.get("title", "Untitled"),
         "type": metadata.get("type", "change"),
         "created": entry.created_at.isoformat() if entry.created_at else None,
-        "projects": entry.projects or [config.id],
+        "project": entry.project or config.id,
         "pr": prs_list[0] if prs_list else None,
         "prs": prs_list,
         "authors": metadata.get("authors") or [],
@@ -550,8 +550,7 @@ def _format_author_line(entry: Entry, config: Config) -> str:
 )
 @click.option(
     "--project",
-    "projects",
-    multiple=True,
+    "project_override",
     help="Assign the entry to a project (must match the configured project).",
 )
 @click.option("--author", "authors", multiple=True, help="GitHub username of an author.")
@@ -571,7 +570,7 @@ def add(
     ctx: CLIContext,
     title: Optional[str],
     entry_type: Optional[str],
-    projects: tuple[str, ...],
+    project_override: Optional[str],
     authors: tuple[str, ...],
     prs: tuple[str, ...],
     description: Optional[str],
@@ -591,14 +590,9 @@ def add(
     else:
         entry_type = _prompt_entry_type()
 
-    if projects:
-        project_list = [item.strip() for item in projects if item.strip()]
-    else:
-        project_list = [config.id]
-
-    for project in project_list:
-        if project != config.id:
-            raise click.ClickException(f"Unknown project '{project}'. Expected '{config.id}'.")
+    project_value = (project_override or "").strip() or config.id
+    if project_value != config.id:
+        raise click.ClickException(f"Unknown project '{project_value}'. Expected '{config.id}'.")
 
     if authors:
         authors_list = [author.strip() for author in authors if author.strip()]
@@ -625,7 +619,7 @@ def add(
     metadata: dict[str, Any] = {
         "title": title,
         "type": entry_type,
-        "projects": project_list,
+        "project": project_value,
         "authors": authors_list or None,
     }
     if pr_numbers:
@@ -642,7 +636,7 @@ def _collect_unused_entries_for_release(project_root: Path, config: Config) -> l
     all_entries = list(iter_entries(project_root))
     used = used_entry_ids(project_root)
     unused = unused_entries(all_entries, used)
-    filtered = [entry for entry in unused if not entry.projects or config.id in entry.projects]
+    filtered = [entry for entry in unused if entry.project is None or entry.project == config.id]
     return filtered
 
 

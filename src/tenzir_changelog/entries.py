@@ -33,15 +33,19 @@ class Entry:
         return str(self.metadata.get("type", "change"))
 
     @property
+    def project(self) -> Optional[str]:
+        """Return the single project an entry belongs to."""
+        try:
+            return normalize_project(self.metadata)
+        except ValueError as exc:
+            raise ValueError(
+                f"Entry '{self.entry_id}' has invalid project metadata: {exc}"
+            ) from exc
+
+    @property
     def projects(self) -> list[str]:
-        projects = self.metadata.get("projects")
-        if not projects:
-            projects = self.metadata.get("products")
-        if not projects:
-            return []
-        if isinstance(projects, list):
-            return [str(item) for item in projects]
-        return [str(projects)]
+        project = self.project
+        return [project] if project else []
 
     @property
     def products(self) -> list[str]:  # backwards compatibility
@@ -96,20 +100,51 @@ def generate_entry_id(seed: Optional[str] = None) -> str:
     return secrets.token_hex(6)
 
 
-def normalize_projects(metadata: dict[str, Any], default: Optional[str] = None) -> list[str]:
-    """Normalize the projects list in metadata."""
-    projects = metadata.get("projects")
-    if projects is None:
-        projects = metadata.get("products")
-    if not projects:
-        project_list = [default] if default else []
-    elif isinstance(projects, str):
-        project_list = [projects]
+def _coerce_project(value: Any, *, source: str) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, (list, tuple, set)):
+        normalized = [str(item).strip() for item in value if str(item).strip()]
+        if not normalized:
+            return None
+        if len(normalized) > 1:
+            raise ValueError(
+                f"{source} must contain a single project, got: {', '.join(normalized)}"
+            )
+        return normalized[0]
+    return str(value).strip() or None
+
+
+def normalize_project(
+    metadata: dict[str, Any],
+    default: Optional[str] = None,
+) -> Optional[str]:
+    """Normalize project metadata to the singular `project` key."""
+    project = _coerce_project(metadata.get("project"), source="project")
+    legacy_keys = ("projects", "products")
+
+    if project is None:
+        for key in legacy_keys:
+            if key in metadata:
+                project = _coerce_project(metadata.get(key), source=key)
+            metadata.pop(key, None)
+            if project is not None:
+                break
+        if project is None and default is not None:
+            project = default
     else:
-        project_list = [str(proj) for proj in projects]
-    metadata.pop("products", None)
-    metadata["projects"] = project_list
-    return project_list
+        for key in legacy_keys:
+            metadata.pop(key, None)
+
+    if project is None:
+        metadata.pop("project", None)
+        return None
+
+    metadata["project"] = project
+    return project
 
 
 def format_frontmatter(metadata: dict[str, Any]) -> str:
@@ -140,10 +175,9 @@ def write_entry(
             f"Unknown entry type '{entry_type}'. Expected one of: {', '.join(ENTRY_TYPES)}"
         )
     metadata["type"] = entry_type
-    project_list = normalize_projects(metadata, default=default_project)
-    if not project_list and default_project:
-        project_list = [default_project]
-        metadata["projects"] = project_list
+    project_value = normalize_project(metadata, default=default_project)
+    if default_project is not None and project_value == default_project:
+        metadata.pop("project", None)
     entry_id = entry_id or generate_entry_id(metadata.get("title"))
     path = directory / f"{entry_id}.md"
 

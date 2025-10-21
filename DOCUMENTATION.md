@@ -34,10 +34,10 @@ pipelines all share the same workflow.
    ```sh
    uvx tenzir-changelog add
    ```
-   The assistant collects metadata (type, project, GitHub PR information,
-   authors, components) and writes a ready-to-commit Markdown file under
-   `entries/`. Defaults such as the configured project come from `config.yaml`, so
-   you rarely need to pass extra flags.
+   The assistant collects metadata (type, GitHub PR information, authors,
+   components) and writes a ready-to-commit Markdown file under `entries/`.
+   Defaults such as the configured project come from `config.yaml`, so you just
+   press enter through most prompts.
 
 ## CLI Overview
 
@@ -183,8 +183,6 @@ project root.
    title: Add pipeline builder
    type: feature
    created: '2025-10-16'
-   projects:
-   - changelog
    authors:
    - alice
    - bob
@@ -201,7 +199,7 @@ under a `prs:` key instead of `pr:` when editing YAML manually.
    ```sh
    uvx tenzir-changelog show
    ```
-   The command renders a table summarizing IDs, titles, types, projects,
+   The command renders a table summarizing IDs, titles, types, project,
    pull-request numbers, and authors for unreleased entries.
 
 4. **Prepare release notes:**  

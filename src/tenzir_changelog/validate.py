@@ -32,13 +32,12 @@ def validate_entry(entry: Entry, config: Config) -> Iterable[ValidationIssue]:
             entry.path,
             f"Unknown type '{entry_type}'. Allowed types: {', '.join(ENTRY_TYPES)}",
         )
-    projects = entry.projects or [config.id]
-    for project in projects:
-        if project != config.id:
-            yield ValidationIssue(
-                entry.path,
-                f"Unknown project '{project}'. Expected '{config.id}'.",
-            )
+    project = entry.project or config.id
+    if project != config.id:
+        yield ValidationIssue(
+            entry.path,
+            f"Unknown project '{project}'. Expected '{config.id}'.",
+        )
 
 
 def validate_release_ids(

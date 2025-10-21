@@ -32,7 +32,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert workspace_root.exists()
     assert config_path.exists()
 
-    # Add entries via CLI, relying on defaults for type/projects.
+    # Add entries via CLI, relying on defaults for type/project.
     add_result = runner.invoke(
         cli,
         [
@@ -43,8 +43,6 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
             "Exciting Feature",
             "--type",
             "feature",
-            "--project",
-            "node",
             "--description",
             "Adds an exciting capability.",
             "--author",
@@ -65,8 +63,6 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
             "Fix ingest crash",
             "--type",
             "bugfix",
-            "--project",
-            "node",
             "--description",
             "Resolves ingest worker crash when tokens expire.",
             "--author",
@@ -88,12 +84,14 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     entry_text = feature_entry.read_text(encoding="utf-8")
     assert "created:" in entry_text
     assert "pr: 42" in entry_text
+    assert "project:" not in entry_text
 
     bugfix_entry = entries_dir / "fix-ingest-crash.md"
     assert bugfix_entry.exists()
     bugfix_text = bugfix_entry.read_text(encoding="utf-8")
     assert "prs:" in bugfix_text
     assert "- 102" in bugfix_text and "- 115" in bugfix_text
+    assert "project:" not in bugfix_text
 
     intro_file = project_root / "intro.md"
     intro_file.write_text("Welcome to the release!\n\n![Image](assets/hero.png)\n")
@@ -162,13 +160,13 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert "v1.0.0" in feature_entry["versions"]
     assert feature_entry["pr"] == 42
     assert feature_entry["prs"] == [42]
-    assert feature_entry["projects"] == ["node"]
+    assert feature_entry["project"] == "node"
 
     bugfix_entry = next(
         entry for entry in payload["entries"] if entry["title"] == "Fix ingest crash"
     )
     assert bugfix_entry["prs"] == [102, 115]
-    assert bugfix_entry["projects"] == ["node"]
+    assert bugfix_entry["project"] == "node"
 
     validate_result = runner.invoke(
         cli,

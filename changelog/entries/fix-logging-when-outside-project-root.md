@@ -1,8 +1,6 @@
 ---
 title: Fix logging when outside project root
 type: bugfix
-projects:
-- changelog
 authors:
 - mavam
 created: '2025-10-21'

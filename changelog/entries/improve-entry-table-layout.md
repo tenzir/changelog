@@ -1,8 +1,6 @@
 ---
 title: Improve entry table layout
 type: change
-projects:
-- changelog
 authors:
 - mavam
 created: '2025-10-21'
