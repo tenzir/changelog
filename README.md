@@ -41,11 +41,6 @@ that mirrors the tutorial in `DOCUMENTATION.md`. Explore it to see how
 `config.yaml`, `entries/`, and Markdown release manifests fit together
 end-to-end.
 
-## 🧑‍💻 Development
-
-See [`DEVELOPMENT.md`](DEVELOPMENT.md) for creating a virtual environment, running
-tests, and preparing releases.
-
 ## 📄 License
 
 `tenzir-changelog` is released under the Apache License, Version 2.0. Consult
