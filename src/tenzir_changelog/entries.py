@@ -84,6 +84,21 @@ def iter_entries(project_root: Path) -> Iterable[Entry]:
         yield read_entry(path)
 
 
+def _entry_sort_key(entry: Entry) -> tuple[date, float, str]:
+    """Return a tuple for deterministic entry ordering."""
+    created = entry.created_at or date.min
+    try:
+        modified = entry.path.stat().st_mtime
+    except OSError:
+        modified = float("-inf")
+    return created, modified, entry.entry_id
+
+
+def sort_entries_desc(entries: Iterable[Entry]) -> list[Entry]:
+    """Return entries sorted reverse chronologically with same-day ordering."""
+    return sorted(entries, key=_entry_sort_key, reverse=True)
+
+
 def generate_entry_id(seed: Optional[str] = None) -> str:
     """Generate a deterministic-ish entry id based on optional seed."""
     if seed:
