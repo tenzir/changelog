@@ -130,6 +130,18 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         ["--root", str(workspace_root), "show"],
     )
     assert show_result.exit_code == 0, show_result.output
+    plain_show = click.utils.strip_ansi(show_result.output)
+    assert "Name:" not in plain_show
+    assert "Types:" not in plain_show
+
+    show_banner = runner.invoke(
+        cli,
+        ["--root", str(workspace_root), "show", "--banner"],
+    )
+    assert show_banner.exit_code == 0, show_banner.output
+    banner_output = click.utils.strip_ansi(show_banner.output)
+    assert "Name: " in banner_output
+    assert "Types: " in banner_output
 
     export_md = runner.invoke(
         cli,

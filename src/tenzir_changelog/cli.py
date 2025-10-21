@@ -16,7 +16,14 @@ from rich.panel import Panel
 from rich.text import Text
 
 from .config import Config, default_config_path, load_config, save_config
-from .entries import ENTRY_TYPES, Entry, entry_directory, iter_entries, write_entry
+from .entries import (
+    ENTRY_TYPES,
+    Entry,
+    entry_directory,
+    iter_entries,
+    sort_entries_desc,
+    write_entry,
+)
 from .releases import (
     ReleaseManifest,
     build_entry_release_index,
@@ -34,6 +41,11 @@ ENTRY_TYPE_STYLES = {
     "feature": "green",
     "bugfix": "red",
     "change": "blue",
+}
+ENTRY_TYPE_EMOJIS = {
+    "feature": "🌟",
+    "bugfix": "🐞",
+    "change": "🔧",
 }
 ENTRY_TYPE_CHOICES = (
     ("feature", "1"),
@@ -246,44 +258,58 @@ def _entries_before_or_equal_version(project_root: Path, version: str) -> set[st
     raise click.ClickException(f"Unknown release version '{version}'")
 
 
-def _render_entries(entries: Iterable[Entry], release_index: dict[str, list[str]]) -> None:
+def _render_project_header(config: Config) -> None:
+    legend = "  ".join(
+        f"{ENTRY_TYPE_EMOJIS.get(entry_type, '•')} {entry_type}"
+        for entry_type in ENTRY_EXPORT_ORDER
+    )
+    header = Text.assemble(
+        ("Name: ", "bold"),
+        config.name or "—",
+        ("\nID: ", "bold"),
+        config.id or "—",
+        ("\nRepository: ", "bold"),
+        config.repository or "—",
+        ("\nTypes: ", "bold"),
+        legend or "—",
+    )
+    console.print(Panel.fit(header, title="Project"))
+
+
+def _render_entries(
+    entries: Iterable[Entry],
+    release_index: dict[str, list[str]],
+    config: Config,
+    show_banner: bool = False,
+) -> None:
+    if show_banner:
+        _render_project_header(config)
+
     table = Table(show_lines=False, expand=True)
     table.add_column("Date", style="yellow", no_wrap=True)
-    table.add_column("Project", style="green", no_wrap=True)
-    table.add_column("Version", style="cyan", no_wrap=True)
+    table.add_column("Version", style="cyan", no_wrap=True, max_width=12)
     table.add_column("Title", style="bold", overflow="fold", max_width=44)
-    table.add_column("Type", style="magenta", no_wrap=True)
+    table.add_column("Type", style="magenta", no_wrap=True, justify="center")
     table.add_column("PR", style="yellow", no_wrap=True)
     table.add_column("Authors", style="blue", overflow="fold", max_width=20)
     table.add_column("ID", style="cyan", no_wrap=True, max_width=28)
 
     has_rows = False
-    sorted_entries = sorted(
-        entries,
-        key=lambda entry: (
-            entry.created_at or date.min,
-            entry.metadata.get("title", ""),
-            entry.entry_id,
-        ),
-        reverse=True,
-    )
+    sorted_entries = sort_entries_desc(list(entries))
 
     for entry in sorted_entries:
         metadata = entry.metadata
         created_display = entry.created_at.isoformat() if entry.created_at else "—"
         type_value = metadata.get("type", "change")
-        type_text = Text(
-            type_value,
-            style=ENTRY_TYPE_STYLES.get(type_value, ""),
-        )
         versions = release_index.get(entry.entry_id)
         version_display = ", ".join(versions) if versions else "—"
+        type_emoji = ENTRY_TYPE_EMOJIS.get(type_value, "•")
+        type_display = Text(type_emoji, style=ENTRY_TYPE_STYLES.get(type_value, ""))
         table.add_row(
             created_display,
-            entry.project or "—",
             version_display,
             metadata.get("title", "Untitled"),
-            type_text,
+            type_display,
             str(metadata.get("pr") or "—"),
             ", ".join(metadata.get("authors") or []) or "—",
             Text(entry.entry_id, style="cyan", overflow="ellipsis", no_wrap=True),
@@ -353,12 +379,14 @@ def _render_release(manifest: ReleaseManifest, project_root: Path) -> None:
     "since_version",
     help="Only show entries newer than the specified release version.",
 )
+@click.option("--banner", is_flag=True, help="Show a project banner above entries.")
 @click.pass_obj
 def show(
     ctx: CLIContext,
     project_filter: tuple[str, ...],
     release_version: Optional[str],
     since_version: Optional[str],
+    banner: bool,
 ) -> None:
     """Display the current changelog or a specific release."""
     config = ctx.ensure_config()
@@ -385,7 +413,7 @@ def show(
         entries = [entry for entry in entries if entry.entry_id not in excluded]
 
     entries = _filter_entries_by_project(entries, projects, config.id)
-    _render_entries(entries, release_index)
+    _render_entries(entries, release_index, config, show_banner=banner)
 
 
 def _prompt_entry_body(initial: str = "") -> str:
@@ -872,14 +900,7 @@ def export_cmd(
     else:
         export_entries = _collect_unused_entries_for_release(project_root, config)
 
-    export_entries.sort(
-        key=lambda entry: (
-            entry.created_at or date.min,
-            entry.metadata.get("title", ""),
-            entry.entry_id,
-        ),
-        reverse=True,
-    )
+    export_entries = sort_entries_desc(export_entries)
 
     export_format = export_format.lower()
     if export_format == "markdown":
