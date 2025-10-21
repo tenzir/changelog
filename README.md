@@ -34,12 +34,11 @@ caches the result for snappy subsequent invocations.
 - [Development guide](DEVELOPMENT.md) — local workflows, quality gates, and
   release procedures for maintainers.
 
-## 🧪 Example
+## 🧪 Dogfooded Project
 
-The repository ships with `example-changelog/`, a fully bootstrapped project
-that mirrors the tutorial in `DOCUMENTATION.md`. Explore it to see how
-`config.yaml`, `entries/`, and Markdown release manifests fit together
-end-to-end.
+The repository ships with `changelog/`, the real changelog project maintained
+by the Tenzir team. Explore it to see how `config.yaml`, `entries/`, and
+Markdown release manifests fit together end-to-end.
 
 ## 📄 License
 

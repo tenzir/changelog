@@ -7,11 +7,11 @@
   `utils.py`) cover config, entries, releases, validation, and shared helpers.
   Keep changes typed and centralize helpers in `utils.py`.
 - `changelog/` stores this repository's changelog project; run CLI commands
-  with `--root changelog` so they operate on the dogfooded data.
+  with `--root changelog` so they operate on the dogfooded data and refresh
+  those files alongside root docs (`README.md`, `DOCUMENTATION.md`,
+  `DEVELOPMENT.md`) when behavior changes.
 - `tests/` stores pytest suites that exercise flows with `CliRunner`; mirror
   module names (e.g., `test_cli.py`) and keep fixtures close to usage.
-- `example-changelog/` is an example project; refresh it with behavior changes
-  and sync root docs (`README.md`, `DOCUMENTATION.md`, `DEVELOPMENT.md`).
 
 ## Build, Test, and Development Commands
 
@@ -47,7 +47,7 @@
 
 - Write commits in the imperative with a single focus, e.g., `Support manifest
   previews`; explain motivation in the body if needed.
-- Every PR should link issues, refresh generated assets (`example-changelog/`,
-  docs), and include screenshots or terminal snippets for UX changes.
+- Every PR should link issues, refresh generated assets (`changelog/`, docs),
+  and include screenshots or terminal snippets for UX changes.
 - Keep CI green by running `uv run check-release` locally and note the
   validation performed plus follow-ups in the PR description.

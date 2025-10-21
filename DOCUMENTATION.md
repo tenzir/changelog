@@ -130,23 +130,24 @@ Run `uvx tenzir-changelog bootstrap` in each repository to provision the
 
 ## Tutorial
 
-This walkthrough mirrors the sample project under `example-changelog/` and shows
+This walkthrough mirrors the dogfooded project under `changelog/` and shows
 how to bootstrap a repository, add entries, preview the backlog, and publish a
 release manifest with richer introductory material. All commands run from the
 project root.
 
 1. **Create a sandbox:**  
    ```sh
-   mkdir example-changelog
-   cd example-changelog
+   mkdir my-changelog
+   cd my-changelog
    uvx tenzir-changelog bootstrap
    ```
    Accept the defaults for project name. When asked for a
-   project, enter `node` as the identifier. After the command completes, inspect
+   project identifier, enter `changelog`. After the command completes, inspect
    `config.yaml`:
    ```yaml
-   id: node
-   name: example-changelog
+   id: changelog
+   name: changelog
+   description: The Tenzir Changelog Management Utility
    repository: tenzir/changelog
    ```
 
@@ -183,7 +184,7 @@ project root.
    type: feature
    created: '2025-10-16'
    projects:
-   - node
+   - changelog
    authors:
    - alice
    - bob
@@ -208,7 +209,7 @@ under a `prs:` key instead of `pr:` when editing YAML manually.
    references. Save it as `intro.md` (feel free to delete the
    file after publishing the release):
    ```markdown
-   Welcome to the first release of the example changelog!
+   Welcome to the first release of the Tenzir changelog!
 
    ![Release Overview](images/release-overview.png)
 
@@ -227,7 +228,7 @@ under a `prs:` key instead of `pr:` when editing YAML manually.
    ---
    version: v0.1.0
    title: Our first release!
-   project: node
+   project: changelog
    created: '2025-10-18'
    entries:
    - add-pipeline-builder
@@ -237,7 +238,7 @@ under a `prs:` key instead of `pr:` when editing YAML manually.
 
    Stitches together initial features.
 
-   Welcome to the first release of the example changelog!
+   Welcome to the first release of the Tenzir changelog!
 
    ![Release Overview](images/release-overview.png)
 

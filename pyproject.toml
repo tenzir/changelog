@@ -54,7 +54,7 @@ include = [
   "/DEVELOPMENT.md",
   "/DOCUMENTATION.md",
   "/LICENSE",
-  "/example-changelog",
+  "/changelog",
   "/pyproject.toml",
 ]
 exclude = [
