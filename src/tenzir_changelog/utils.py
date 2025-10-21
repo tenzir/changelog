@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from datetime import date, datetime
 from pathlib import Path
@@ -69,3 +70,13 @@ def slugify(value: str) -> str:
     while "--" in slug:
         slug = slug.replace("--", "-")
     return slug.strip("-") or "project"
+
+
+def extract_excerpt(text: str) -> str:
+    """Return the first paragraph of a Markdown body as a single line."""
+    stripped = text.strip()
+    if not stripped:
+        return ""
+    first_paragraph, *_ = re.split(r"\n\s*\n", stripped, maxsplit=1)
+    collapsed = re.sub(r"\s*\n\s*", " ", first_paragraph.strip())
+    return collapsed.strip()

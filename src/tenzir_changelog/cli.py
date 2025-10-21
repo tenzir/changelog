@@ -34,7 +34,7 @@ from .releases import (
     write_release_manifest,
 )
 from .validate import run_validation
-from .utils import console, guess_git_remote, slugify
+from .utils import console, extract_excerpt, guess_git_remote, slugify
 
 INFO_PREFIX = "\033[94;1mi\033[0m "
 ENTRY_TYPE_STYLES = {
@@ -478,7 +478,11 @@ def _prompt_entry_type(default: str = DEFAULT_ENTRY_TYPE) -> str:
 
 
 def _entry_to_dict(
-    entry: Entry, config: Config, versions: list[str] | None = None
+    entry: Entry,
+    config: Config,
+    versions: list[str] | None = None,
+    *,
+    compact: bool = False,
 ) -> dict[str, object]:
     metadata = entry.metadata
     prs_value = metadata.get("prs")
@@ -496,7 +500,7 @@ def _entry_to_dict(
                 prs_list.append(int(str(pr_single).strip()))
             except (TypeError, ValueError):
                 pass
-    return {
+    data = {
         "id": entry.entry_id,
         "title": metadata.get("title", "Untitled"),
         "type": metadata.get("type", "change"),
@@ -508,6 +512,9 @@ def _entry_to_dict(
         "versions": versions or [],
         "body": entry.body,
     }
+    if compact:
+        data["excerpt"] = extract_excerpt(entry.body)
+    return data
 
 
 def _join_with_conjunction(items: list[str]) -> str:
@@ -820,11 +827,59 @@ def _export_markdown_release(
     return "\n".join(lines).strip() + "\n"
 
 
+def _export_markdown_compact(
+    manifest: Optional[ReleaseManifest],
+    entries: list[Entry],
+    config: Config,
+    release_index: dict[str, list[str]],
+) -> str:
+    lines: list[str] = []
+    if manifest:
+        title = manifest.title or manifest.version or "Release"
+        lines.append(f"# {title}")
+        if manifest.description:
+            lines.append("")
+            lines.append(manifest.description.strip())
+        lines.append("")
+    else:
+        lines.append("# Unreleased Changes")
+        lines.append("")
+
+    if not entries:
+        lines.append("No changes found.")
+        return "\n".join(lines).strip() + "\n"
+
+    entries_by_type: dict[str, list[Entry]] = {}
+    for entry in entries:
+        entry_type = entry.metadata.get("type", DEFAULT_ENTRY_TYPE)
+        entries_by_type.setdefault(entry_type, []).append(entry)
+
+    for type_key in ENTRY_EXPORT_ORDER:
+        type_entries = entries_by_type.get(type_key) or []
+        if not type_entries:
+            continue
+        section_title = TYPE_SECTION_TITLES.get(type_key, type_key.title())
+        lines.append(f"## {section_title}")
+        lines.append("")
+        for entry in type_entries:
+            title = entry.metadata.get("title", "Untitled")
+            excerpt = extract_excerpt(entry.body)
+            bullet = f"- **{title}**"
+            if excerpt:
+                bullet = f"{bullet}: {excerpt}"
+            lines.append(bullet)
+        lines.append("")
+
+    return "\n".join(lines).strip() + "\n"
+
+
 def _export_json_payload(
     manifest: Optional[ReleaseManifest],
     entries: list[Entry],
     config: Config,
     release_index: dict[str, list[str]],
+    *,
+    compact: bool = False,
 ) -> dict[str, object]:
     data: dict[str, object] = {}
     if manifest:
@@ -852,8 +907,10 @@ def _export_json_payload(
         versions = list(release_index.get(entry.entry_id, []))
         if manifest and manifest.version and manifest.version not in versions:
             versions.append(manifest.version)
-        payload_entries.append(_entry_to_dict(entry, config, versions))
+        payload_entries.append(_entry_to_dict(entry, config, versions, compact=compact))
     data["entries"] = payload_entries
+    if compact:
+        data["compact"] = True
     return data
 
 
@@ -866,11 +923,18 @@ def _export_json_payload(
     show_default=True,
     help="Output format",
 )
+@click.option(
+    "--compact/--no-compact",
+    default=False,
+    show_default=True,
+    help="Use compact layout for the exported content.",
+)
 @click.option("--release", "release_version", help="Release version to export.")
 @click.pass_obj
 def export_cmd(
     ctx: CLIContext,
     export_format: str,
+    compact: bool,
     release_version: Optional[str],
 ) -> None:
     """Export changelog content as Markdown or JSON."""
@@ -904,10 +968,23 @@ def export_cmd(
 
     export_format = export_format.lower()
     if export_format == "markdown":
-        content = _export_markdown_release(manifest, export_entries, config, release_index)
+        if compact:
+            content = _export_markdown_compact(
+                manifest, export_entries, config, release_index
+            )
+        else:
+            content = _export_markdown_release(
+                manifest, export_entries, config, release_index
+            )
         click.echo(content, nl=False)
     else:
-        payload = _export_json_payload(manifest, export_entries, config, release_index)
+        payload = _export_json_payload(
+            manifest,
+            export_entries,
+            config,
+            release_index,
+            compact=compact,
+        )
         click.echo(json.dumps(payload, indent=2))
 
 

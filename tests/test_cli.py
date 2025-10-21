@@ -155,6 +155,26 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert "### Fix ingest crash" in export_md.output
     assert "#102" in export_md.output and "#115" in export_md.output
 
+    export_compact = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "export",
+            "--release",
+            "v1.0.0",
+            "--compact",
+        ],
+    )
+    assert export_compact.exit_code == 0, export_compact.output
+    assert "## Features" in export_compact.output
+    assert "- **Exciting Feature**: Adds an exciting capability." in export_compact.output
+    assert "## Bug fixes" in export_compact.output
+    assert (
+        "- **Fix ingest crash**: Resolves ingest worker crash when tokens expire."
+        in export_compact.output
+    )
+
     export_json = runner.invoke(
         cli,
         [
@@ -165,6 +185,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
             "v1.0.0",
             "--format",
             "json",
+            "--compact",
         ],
     )
     assert export_json.exit_code == 0, export_json.output
@@ -178,12 +199,15 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert feature_entry["pr"] == 42
     assert feature_entry["prs"] == [42]
     assert feature_entry["project"] == "node"
+    assert feature_entry.get("excerpt") == "Adds an exciting capability."
 
     bugfix_entry = next(
         entry for entry in payload["entries"] if entry["title"] == "Fix ingest crash"
     )
     assert bugfix_entry["prs"] == [102, 115]
     assert bugfix_entry["project"] == "node"
+    assert bugfix_entry.get("excerpt") == "Resolves ingest worker crash when tokens expire."
+    assert payload.get("compact") is True
 
     validate_result = runner.invoke(
         cli,
