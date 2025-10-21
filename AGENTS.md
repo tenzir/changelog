@@ -1,0 +1,51 @@
+# Repository Guidelines
+
+## Project Structure & Module Organization
+
+- `src/tenzir_changelog/` hosts the CLI; `cli.py` registers Click commands and
+  companion modules (`config.py`, `entries.py`, `releases.py`, `validate.py`,
+  `utils.py`) cover config, entries, releases, validation, and shared helpers.
+  Keep changes typed and centralize helpers in `utils.py`.
+- `tests/` stores pytest suites that exercise flows with `CliRunner`; mirror
+  module names (e.g., `test_cli.py`) and keep fixtures close to usage.
+- `example-changelog/` is an example project; refresh it with behavior changes
+  and sync root docs (`README.md`, `DOCUMENTATION.md`, `DEVELOPMENT.md`).
+
+## Build, Test, and Development Commands
+
+- `uv sync --python 3.12` provisions dependencies into `.venv/`.
+- `uv run ruff format` (or `--check`) enforces formatting; follow with `uv run
+  ruff check` for linting (E, F).
+- `uv run pytest` runs the suite; add `--cov=src/tenzir_changelog` when updating
+  coverage.
+- `uv run mypy` keeps strict typing; fix warnings rather than ignoring them.
+- `uv run check-release` chains formatter, lint, typing, tests, and build—run
+  before every PR.
+- `uv build` emits sdist and wheel artifacts for smoke tests or releases.
+
+## Coding Style & Naming Conventions
+
+- `ruff` controls whitespace: spaces for indents, double quotes, and a
+  80-character limit; let it order imports.
+- Type hints are required (`mypy` strict); annotate public APIs and avoid `Any`.
+- Use `snake_case` for modules, functions, and variables; reserve `PascalCase`
+  for classes and `CONSTANT_CASE` for constants.
+- Prefer kebab-case for CLI flags and keep user messages concise.
+
+## Testing Guidelines
+
+- pytest discovers `test_*.py` and `*_test.py`; model coverage on
+  `tests/test_cli.py` with `CliRunner` end-to-end flows.
+- Maintain ≥80% coverage (enforced by coverage config). Run `uv run pytest
+  --cov=src/tenzir_changelog --cov-report=term-missing` before review.
+- Move shared fixtures to `tests/conftest.py` when needed and favour `tmp_path`
+  for workspace tests.
+
+## Commit & Pull Request Guidelines
+
+- Write commits in the imperative with a single focus, e.g., `Support manifest
+  previews`; explain motivation in the body if needed.
+- Every PR should link issues, refresh generated assets (`example-changelog/`,
+  docs), and include screenshots or terminal snippets for UX changes.
+- Keep CI green by running `uv run check-release` locally and note the
+  validation performed plus follow-ups in the PR description.
