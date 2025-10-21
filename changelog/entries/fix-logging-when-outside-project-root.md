@@ -3,7 +3,7 @@ title: Fix logging when outside project root
 type: bugfix
 authors:
 - mavam
-created: '2025-10-21'
+created: 2025-10-21
 ---
 
 When attempting to run `tenzir-changelog` outside a project root, you now get a

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import click
 from click.testing import CliRunner
 
 from tenzir_changelog.cli import INFO_PREFIX, cli
+from tenzir_changelog.entries import read_entry
 
 
 def test_bootstrap_add_and_release(tmp_path: Path) -> None:
@@ -85,6 +87,9 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert "created:" in entry_text
     assert "pr: 42" in entry_text
     assert "project:" not in entry_text
+    parsed_entry = read_entry(feature_entry)
+    assert isinstance(parsed_entry.metadata["created"], date)
+    assert parsed_entry.created_at == parsed_entry.metadata["created"]
 
     bugfix_entry = entries_dir / "fix-ingest-crash.md"
     assert bugfix_entry.exists()

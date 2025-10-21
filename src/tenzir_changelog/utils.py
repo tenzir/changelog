@@ -3,12 +3,30 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
 
 console = Console()
+
+
+def coerce_date(value: object) -> Optional[date]:
+    """Return a date object for ISO-like inputs, preserving None."""
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
 
 
 def guess_git_remote(project_root: Path) -> Optional[str]:

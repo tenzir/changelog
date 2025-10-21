@@ -9,7 +9,7 @@ from typing import Any, Iterable, Optional
 
 import yaml
 
-from .utils import slugify
+from .utils import coerce_date, slugify
 
 ENTRY_DIR = Path("entries")
 ENTRY_TYPES = ("feature", "bugfix", "change")
@@ -53,13 +53,7 @@ class Entry:
 
     @property
     def created_at(self) -> Optional[date]:
-        created = self.metadata.get("created")
-        if not created:
-            return None
-        try:
-            return date.fromisoformat(str(created))
-        except ValueError:
-            return None
+        return coerce_date(self.metadata.get("created"))
 
 
 def entry_directory(project_root: Path) -> Path:
@@ -76,6 +70,7 @@ def read_entry(path: Path) -> Entry:
     _, _, remainder = content.partition("---\n")
     frontmatter, _, body = remainder.partition("\n---\n")
     metadata = yaml.safe_load(frontmatter) or {}
+    _normalize_created_metadata(metadata)
     entry_id = path.stem
     return Entry(entry_id=entry_id, metadata=metadata, body=body.strip(), path=path)
 
@@ -147,6 +142,30 @@ def normalize_project(
     return project
 
 
+def _normalize_created_metadata(
+    metadata: dict[str, Any],
+    *,
+    default_today: bool = False,
+) -> None:
+    """Ensure the created field is stored as a date object."""
+    if "created" not in metadata or metadata["created"] is None:
+        metadata.pop("created", None)
+        if default_today:
+            metadata["created"] = date.today()
+        return
+    raw_created = metadata["created"]
+    created_value = coerce_date(raw_created)
+    if created_value is not None:
+        metadata["created"] = created_value
+        return
+    if isinstance(raw_created, str) and not raw_created.strip():
+        metadata.pop("created", None)
+        if default_today:
+            metadata["created"] = date.today()
+        return
+    raise ValueError(f"Invalid created date value: {raw_created!r}")
+
+
 def format_frontmatter(metadata: dict[str, Any]) -> str:
     """Render metadata as YAML frontmatter for an entry file."""
     cleaned: dict[str, Any] = {}
@@ -193,7 +212,7 @@ def write_entry(
                 break
             counter += 1
 
-    metadata.setdefault("created", date.today().isoformat())
+    _normalize_created_metadata(metadata, default_today=True)
     frontmatter = format_frontmatter(metadata)
     with path.open("w", encoding="utf-8") as handle:
         handle.write(frontmatter)
