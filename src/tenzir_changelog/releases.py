@@ -88,9 +88,7 @@ def iter_release_manifests(project_root: Path) -> Iterable[ReleaseManifest]:
             title=str(data.get("title", "")),
             description=description,
             project=str(project_value or ""),
-            created=date.fromisoformat(
-                data.get("created", date.today().isoformat())
-            ),
+            created=date.fromisoformat(data.get("created", date.today().isoformat())),
             entries=[str(entry) for entry in data.get("entries") or []],
             intro=intro,
             path=path,

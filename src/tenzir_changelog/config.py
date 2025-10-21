@@ -50,9 +50,7 @@ def load_config(path: Path) -> Config:
     workspace = WorkspaceSettings(
         name=str(workspace_raw.get("name", "Unnamed Project")),
         description=str(workspace_raw.get("description", "")),
-        repository=(
-            str(workspace_raw["repository"]) if "repository" in workspace_raw else None
-        ),
+        repository=(str(workspace_raw["repository"]) if "repository" in workspace_raw else None),
     )
 
     project_value_raw = raw.get("project")
@@ -66,9 +64,7 @@ def load_config(path: Path) -> Config:
     return Config(
         workspace=workspace,
         project=project_value,
-        intro_template=(
-            str(raw["intro_template"]) if raw.get("intro_template") else None
-        ),
+        intro_template=(str(raw["intro_template"]) if raw.get("intro_template") else None),
         assets_dir=str(raw["assets_dir"]) if raw.get("assets_dir") else None,
     )
 

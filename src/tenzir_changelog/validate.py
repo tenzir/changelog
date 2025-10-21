@@ -41,9 +41,7 @@ def validate_entry(entry: Entry, config: Config) -> Iterable[ValidationIssue]:
             )
 
 
-def validate_release_ids(
-    entries: Iterable[Entry], releases, issues: List[ValidationIssue]
-) -> None:
+def validate_release_ids(entries: Iterable[Entry], releases, issues: List[ValidationIssue]) -> None:
     """Ensure release manifests reference existing entry IDs."""
     entry_ids = {entry.entry_id for entry in entries}
     for manifest in releases:

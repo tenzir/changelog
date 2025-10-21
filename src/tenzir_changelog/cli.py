@@ -106,6 +106,7 @@ def _normalize_optional(value: Optional[str]) -> Optional[str]:
         return None
     return value
 
+
 def _prompt_project(existing: Optional[str], project_root: Path) -> str:
     """Prompt for the primary project slug."""
     default_value = existing or slugify(project_root.name)
@@ -164,33 +165,29 @@ def bootstrap_cmd(ctx: CLIContext, update: bool) -> None:
     if config_path.exists():
         if not update:
             raise click.ClickException(
-                f"Config already exists at {config_path}. "
-                "Re-run with --update to modify it."
+                f"Config already exists at {config_path}. Re-run with --update to modify it."
             )
         existing_config = load_config(config_path)
 
-    project_name_default = (
-        existing_config.workspace.name if existing_config else project_root.name
-    )
-    project_description_default = (
-        existing_config.workspace.description if existing_config else ""
-    )
+    project_name_default = existing_config.workspace.name if existing_config else project_root.name
+    project_description_default = existing_config.workspace.description if existing_config else ""
     repo_default = existing_config.workspace.repository if existing_config else None
     repo_guess = guess_git_remote(project_root)
     if repo_default is None and repo_guess:
         repo_default = repo_guess
 
-    project_name = click.prompt(
-        "Project name", default=project_name_default, show_default=True
-    )
+    project_name = click.prompt("Project name", default=project_name_default, show_default=True)
     project_description = click.prompt(
         "Project description", default=project_description_default, show_default=False
     )
-    repository = click.prompt(
-        "GitHub repository (owner/name)",
-        default=repo_default or "",
-        show_default=bool(repo_default),
-    ).strip() or None
+    repository = (
+        click.prompt(
+            "GitHub repository (owner/name)",
+            default=repo_default or "",
+            show_default=bool(repo_default),
+        ).strip()
+        or None
+    )
 
     project = _prompt_project(existing_config.project if existing_config else None, project_root)
 
@@ -266,9 +263,7 @@ def _render_entries(entries: Iterable[Entry], release_index: dict[str, list[str]
 
     for entry in sorted_entries:
         metadata = entry.metadata
-        created_display = (
-            entry.created_at.isoformat() if entry.created_at else "—"
-        )
+        created_display = entry.created_at.isoformat() if entry.created_at else "—"
         type_value = metadata.get("type", "change")
         type_text = Text(
             type_value,
@@ -367,7 +362,9 @@ def show(
     since_version = _normalize_optional(since_version)
 
     if release_version:
-        manifests = [m for m in iter_release_manifests(project_root) if m.version == release_version]
+        manifests = [
+            m for m in iter_release_manifests(project_root) if m.version == release_version
+        ]
         if not manifests:
             raise click.ClickException(f"Release '{release_version}' not found.")
         manifest = manifests[0]
@@ -401,9 +398,7 @@ def _prompt_entry_body(initial: str = "") -> str:
 
 def _prompt_text(label: str, **kwargs) -> str:
     prompt_suffix = kwargs.pop("prompt_suffix", ": ")
-    return click.prompt(
-        click.style(label, bold=True), prompt_suffix=prompt_suffix, **kwargs
-    )
+    return click.prompt(click.style(label, bold=True), prompt_suffix=prompt_suffix, **kwargs)
 
 
 def _prompt_optional(prompt: str, default: Optional[str] = None) -> Optional[str]:
@@ -446,7 +441,9 @@ def _prompt_entry_type(default: str = DEFAULT_ENTRY_TYPE) -> str:
     return selection
 
 
-def _entry_to_dict(entry: Entry, config: Config, versions: list[str] | None = None) -> dict[str, object]:
+def _entry_to_dict(
+    entry: Entry, config: Config, versions: list[str] | None = None
+) -> dict[str, object]:
     metadata = entry.metadata
     prs_value = metadata.get("prs")
     prs_list: list[int] = []
@@ -593,9 +590,7 @@ def add(
 
     for project in project_list:
         if project != config.project:
-            raise click.ClickException(
-                f"Unknown project '{project}'. Expected '{config.project}'."
-            )
+            raise click.ClickException(f"Unknown project '{project}'. Expected '{config.project}'.")
 
     if authors:
         authors_list = [author.strip() for author in authors if author.strip()]
@@ -635,17 +630,11 @@ def add(
     console.print(f"[green]Entry created:[/green] {path.relative_to(project_root)}")
 
 
-def _collect_unused_entries_for_release(
-    project_root: Path, config: Config
-) -> list[Entry]:
+def _collect_unused_entries_for_release(project_root: Path, config: Config) -> list[Entry]:
     all_entries = list(iter_entries(project_root))
     used = used_entry_ids(project_root)
     unused = unused_entries(all_entries, used)
-    filtered = [
-        entry
-        for entry in unused
-        if not entry.projects or config.project in entry.projects
-    ]
+    filtered = [entry for entry in unused if not entry.projects or config.project in entry.projects]
     return filtered
 
 
@@ -746,13 +735,16 @@ def validate_cmd(ctx: CLIContext) -> None:
         return
 
     for issue in issues:
-        console.print(
-            f"[red]{issue.severity.upper()}[/red] {issue.path}: {issue.message}"
-        )
+        console.print(f"[red]{issue.severity.upper()}[/red] {issue.path}: {issue.message}")
     raise SystemExit(1)
 
 
-def _export_markdown_release(manifest: Optional[ReleaseManifest], entries: list[Entry], config: Config, release_index: dict[str, list[str]]) -> str:
+def _export_markdown_release(
+    manifest: Optional[ReleaseManifest],
+    entries: list[Entry],
+    config: Config,
+    release_index: dict[str, list[str]],
+) -> str:
     lines: list[str] = []
     if manifest:
         title = manifest.title or manifest.version or "Release"
@@ -798,7 +790,12 @@ def _export_markdown_release(manifest: Optional[ReleaseManifest], entries: list[
     return "\n".join(lines).strip() + "\n"
 
 
-def _export_json_payload(manifest: Optional[ReleaseManifest], entries: list[Entry], config: Config, release_index: dict[str, list[str]]) -> dict[str, object]:
+def _export_json_payload(
+    manifest: Optional[ReleaseManifest],
+    entries: list[Entry],
+    config: Config,
+    release_index: dict[str, list[str]],
+) -> dict[str, object]:
     data: dict[str, object] = {}
     if manifest:
         data.update(
@@ -862,17 +859,13 @@ def export_cmd(
 
     if release_version:
         manifests = [
-            m
-            for m in iter_release_manifests(project_root)
-            if m.version == release_version
+            m for m in iter_release_manifests(project_root) if m.version == release_version
         ]
         if not manifests:
             raise click.ClickException(f"Release '{release_version}' not found.")
         manifest = manifests[0]
         export_entries = [
-            entry_map[entry_id]
-            for entry_id in manifest.entries
-            if entry_id in entry_map
+            entry_map[entry_id] for entry_id in manifest.entries if entry_id in entry_map
         ]
     else:
         export_entries = _collect_unused_entries_for_release(project_root, config)

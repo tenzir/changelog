@@ -153,13 +153,17 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     payload = json.loads(export_json.output)
     assert payload["version"] == "v1.0.0"
     assert payload["project"] == "node"
-    feature_entry = next(entry for entry in payload["entries"] if entry["title"] == "Exciting Feature")
+    feature_entry = next(
+        entry for entry in payload["entries"] if entry["title"] == "Exciting Feature"
+    )
     assert "v1.0.0" in feature_entry["versions"]
     assert feature_entry["pr"] == 42
     assert feature_entry["prs"] == [42]
     assert feature_entry["projects"] == ["node"]
 
-    bugfix_entry = next(entry for entry in payload["entries"] if entry["title"] == "Fix ingest crash")
+    bugfix_entry = next(
+        entry for entry in payload["entries"] if entry["title"] == "Fix ingest crash"
+    )
     assert bugfix_entry["prs"] == [102, 115]
     assert bugfix_entry["projects"] == ["node"]
 
