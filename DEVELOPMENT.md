@@ -49,6 +49,29 @@ uv run python
   uv run check-release
   ```
 
+## Changelog Workflow
+
+We maintain this repository's changelog with the local CLI workspace in
+`changelog/`. Always invoke the tool through `uv run` so it picks up the managed
+environment:
+
+```sh
+uv run tenzir-changelog --root changelog --help
+```
+
+Add an entry for every notable change:
+
+```sh
+uv run tenzir-changelog --root changelog add --title "Describe the change"
+```
+
+Use `release create` when drafting release manifests and `validate` to check the
+workspace before submitting a pull request:
+
+```sh
+uv run tenzir-changelog --root changelog validate
+```
+
 ## Quality Gates
 
 Before opening a pull request, ensure the combined workflow passes:

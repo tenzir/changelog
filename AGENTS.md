@@ -6,6 +6,8 @@
   companion modules (`config.py`, `entries.py`, `releases.py`, `validate.py`,
   `utils.py`) cover config, entries, releases, validation, and shared helpers.
   Keep changes typed and centralize helpers in `utils.py`.
+- `changelog/` stores this repository's changelog workspace; run CLI commands
+  with `--root changelog` so they operate on the dogfooded data.
 - `tests/` stores pytest suites that exercise flows with `CliRunner`; mirror
   module names (e.g., `test_cli.py`) and keep fixtures close to usage.
 - `example-changelog/` is an example project; refresh it with behavior changes
