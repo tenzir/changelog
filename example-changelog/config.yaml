@@ -1,0 +1,4 @@
+workspace:
+  name: example-changelog
+  repository: tenzir/changelog
+project: node
