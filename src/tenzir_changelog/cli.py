@@ -16,6 +16,7 @@ from rich.console import RenderableType
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from rich.markdown import Markdown
 
 from .config import (
     Config,
@@ -597,6 +598,111 @@ def _render_release(
     console.print(table)
 
 
+def _find_entry_by_id(project_root: Path, search_id: str) -> tuple[Entry, list[str]]:
+    """Find an entry by ID with partial matching and return release versions."""
+    # Collect all entries (unreleased and released)
+    entries = list(iter_entries(project_root))
+    entry_map = {entry.entry_id: entry for entry in entries}
+    released_entries = collect_release_entries(project_root)
+    for eid, entry in released_entries.items():
+        if eid not in entry_map:
+            entry_map[eid] = entry
+
+    # Build release index to know which releases contain this entry
+    release_index = build_entry_release_index(project_root, project=None)
+
+    # Try exact match first
+    if search_id in entry_map:
+        entry = entry_map[search_id]
+        versions = release_index.get(entry.entry_id, [])
+        return entry, versions
+
+    # Try partial match
+    matches = [(eid, entry) for eid, entry in entry_map.items() if search_id in eid]
+
+    if not matches:
+        raise click.ClickException(
+            f"No entry found matching '{search_id}'. "
+            "Use 'tenzir-changelog show' to list all entries."
+        )
+
+    if len(matches) > 1:
+        match_ids = [eid for eid, _ in matches]
+        raise click.ClickException(
+            f"Multiple entries match '{search_id}':\n  "
+            + "\n  ".join(match_ids)
+            + "\n\nPlease be more specific."
+        )
+
+    entry_id, entry = matches[0]
+    versions = release_index.get(entry_id, [])
+    return entry, versions
+
+
+def _render_single_entry(entry: Entry, release_versions: list[str]) -> None:
+    """Display a single changelog entry with formatted output."""
+    # Build title with emoji and type color
+    type_emoji = ENTRY_TYPE_EMOJIS.get(entry.type, "•")
+    type_color = ENTRY_TYPE_STYLES.get(entry.type, "white")
+
+    title = Text()
+    title.append(f"{type_emoji} ", style="bold")
+    title.append(entry.title, style=f"bold {type_color}")
+
+    # Display title panel
+    console.print()
+    console.print(Panel(title, expand=False))
+    console.print()
+
+    # Build metadata section
+    metadata_lines = []
+    metadata_lines.append(f"[bold]Entry ID:[/bold]  [cyan]{entry.entry_id}[/cyan]")
+    metadata_lines.append(f"[bold]Type:[/bold]      [{type_color}]{entry.type}[/{type_color}]")
+
+    if entry.created_at:
+        metadata_lines.append(f"[bold]Created:[/bold]   {entry.created_at}")
+
+    authors = entry.metadata.get("authors")
+    if authors:
+        authors_str = ", ".join(f"@{a}" for a in authors)
+        metadata_lines.append(f"[bold]Authors:[/bold]   {authors_str}")
+
+    # Handle both 'pr' (single) and 'prs' (multiple)
+    pr_numbers = []
+    if "pr" in entry.metadata and entry.metadata["pr"]:
+        pr_numbers.append(entry.metadata["pr"])
+    if "prs" in entry.metadata and entry.metadata["prs"]:
+        pr_numbers.extend(entry.metadata["prs"])
+    if pr_numbers:
+        prs_str = ", ".join(f"#{pr}" for pr in pr_numbers)
+        metadata_lines.append(f"[bold]PRs:[/bold]       {prs_str}")
+
+    # Status: released or unreleased
+    if release_versions:
+        versions_str = ", ".join(release_versions)
+        metadata_lines.append(f"[bold]Status:[/bold]    [green]Released in {versions_str}[/green]")
+    else:
+        metadata_lines.append("[bold]Status:[/bold]    [yellow]Unreleased[/yellow]")
+
+    # Print metadata
+    for line in metadata_lines:
+        console.print(line)
+
+    # Separator
+    console.print()
+    console.print("─" * min(console.width, 80))
+    console.print()
+
+    # Render the markdown body
+    if entry.body.strip():
+        markdown_content = Markdown(entry.body.strip())
+        console.print(markdown_content)
+    else:
+        console.print("[dim]No description provided.[/dim]")
+
+    console.print()
+
+
 @cli.command("show")
 @click.option("--project", "project_filter", multiple=True, help="Filter by project key.")
 @click.option(
@@ -611,6 +717,12 @@ def _render_release(
     help="Only show entries newer than the specified release version.",
 )
 @click.option("--banner", is_flag=True, help="Show a project banner above entries.")
+@click.option(
+    "--entry",
+    "entry_id",
+    default=None,
+    help="Show a specific changelog entry by ID (supports partial matching).",
+)
 @click.pass_obj
 def show(
     ctx: CLIContext,
@@ -618,6 +730,7 @@ def show(
     release_version: Optional[str],
     since_version: Optional[str],
     banner: bool,
+    entry_id: Optional[str],
 ) -> None:
     """Display the current changelog or a specific release."""
     config = ctx.ensure_config()
@@ -626,6 +739,12 @@ def show(
 
     release_version = _normalize_optional(release_version)
     since_version = _normalize_optional(since_version)
+    entry_id = _normalize_optional(entry_id)
+
+    if entry_id:
+        entry, versions = _find_entry_by_id(project_root, entry_id)
+        _render_single_entry(entry, versions)
+        return
 
     if release_version:
         manifests = [
