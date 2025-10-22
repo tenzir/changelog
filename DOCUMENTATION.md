@@ -161,20 +161,20 @@ project root.
 2. **Capture entries:**  
    Record three representative changes with authors and pull-request numbers:
    ```sh
-  uvx tenzir-changelog add \
-    --title "Add pipeline builder" \
-    --type feature \
-    --description "Introduces the new pipeline builder UI." \
-    --author alice \
-    --pr 101
+   uvx tenzir-changelog add \
+     --title "Add pipeline builder" \
+     --type feature \
+     --description "Introduces the new pipeline builder UI." \
+     --author alice \
+     --pr 101
 
-  uvx tenzir-changelog add \
-    --title "Fix ingest crash" \
-    --type bugfix \
-    --description "Resolves ingest worker crash when tokens expire." \
-    --author bob \
-    --pr 102 \
-    --pr 115
+   uvx tenzir-changelog add \
+     --title "Fix ingest crash" \
+     --type bugfix \
+     --description "Resolves ingest worker crash when tokens expire." \
+     --author bob \
+     --pr 102 \
+     --pr 115
 
    uvx tenzir-changelog add \
      --title "Improve CLI help" \
@@ -183,24 +183,23 @@ project root.
      --author carol \
      --pr 103
    ```
-  Each invocation writes a Markdown file inside `unreleased/`. For example,
+   Each invocation writes a Markdown file inside `unreleased/`. For example,
    `add-pipeline-builder.md` looks like:
-  ```markdown
-  ---
+   ```markdown
+   ---
    title: Add pipeline builder
    type: feature
-   created: '2025-10-16'
    authors:
    - alice
-   - bob
+   created: 2025-10-16
    pr: 101
    ---
 
    Introduces the new pipeline builder UI.
-  ```
+   ```
 
-If an entry spans multiple pull requests, repeat `--pr` during `add` or list them
-under a `prs:` key instead of `pr:` when editing YAML manually.
+If an entry spans multiple pull requests, repeat `--pr` during `add`. The CLI
+stores a `prs:` list in the generated frontmatter automatically.
 
 3. **Preview the changelog:**  
    ```sh
@@ -227,28 +226,47 @@ under a `prs:` key instead of `pr:` when editing YAML manually.
      --description "Stitches together initial features." \
      --intro-file intro.md
    ```
-   Confirm the prompt to include all pending entries. The tool writes
-   `releases/v0.1.0.md`:
-   ```markdown
-   ---
-   version: v0.1.0
-   title: Our first release!
-   project: changelog
-   created: '2025-10-18'
-   entries:
-   - add-pipeline-builder
-   - fix-ingest-crash
-   - improve-cli-help
-   ---
+   Confirm the prompt to include all pending entries. The tool writes the release
+   artifacts under `releases/v0.1.0/`:
+   - `manifest.yaml` captures metadata and references the intro snippet:
+     ```yaml
+     version: v0.1.0
+     created: 2025-10-18
+     entries:
+     - add-pipeline-builder
+     - fix-ingest-crash
+     - improve-cli-help
+     intro: |-
+       Welcome to the first release of the Tenzir changelog!
 
-   Stitches together initial features.
+       ![Release Overview](images/release-overview.png)
 
-   Welcome to the first release of the Tenzir changelog!
+       We cover highlights, upgrades, and fixes below.
+     ```
+   - `notes.md` stitches together the description, intro, and generated sections:
+     ```markdown
+     Stitches together initial features.
 
-   ![Release Overview](images/release-overview.png)
+     Welcome to the first release of the Tenzir changelog!
 
-   We cover highlights, upgrades, and fixes below.
-   ```
+     ![Release Overview](images/release-overview.png)
+
+     We cover highlights, upgrades, and fixes below.
+
+     ## Features
+
+     - **Add pipeline builder**: Introduces the new pipeline builder UI.
+
+     ## Bug fixes
+
+     - **Fix ingest crash**: Resolves ingest worker crash when tokens expire.
+
+     ## Changes
+
+     - **Improve CLI help**: Tweaks command descriptions for clarity.
+     ```
+   - `entries/` contains the archived entry files that were moved out of
+     `unreleased/`.
 
 6. **Validate the project:**  
    ```sh

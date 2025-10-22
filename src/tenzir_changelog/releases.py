@@ -64,18 +64,6 @@ def release_directory(project_root: Path) -> Path:
     return project_root / RELEASE_DIR
 
 
-def _parse_frontmatter(path: Path) -> tuple[dict[str, object], str | None]:
-    content = path.read_text(encoding="utf-8")
-    if not content.startswith("---"):
-        data = yaml.safe_load(content) or {}
-        return data, None
-    _, _, remainder = content.partition("---\n")
-    frontmatter, _, body = remainder.partition("\n---\n")
-    data = yaml.safe_load(frontmatter) or {}
-    intro = body.strip() if body else ""
-    return data, intro or None
-
-
 def _parse_created_date(raw_value: object | None) -> date:
     if raw_value is None:
         return date.today()
@@ -99,7 +87,6 @@ def iter_release_manifests(project_root: Path) -> Iterable[ReleaseManifest]:
         return
 
     manifest_paths = sorted(directory.glob("*/manifest.yaml"))
-    processed_dirs = {path.parent for path in manifest_paths}
 
     for path in manifest_paths:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -122,69 +109,6 @@ def iter_release_manifests(project_root: Path) -> Iterable[ReleaseManifest]:
             title=title_value,
             description=raw_description,
             intro=raw_intro or None,
-            path=path,
-        )
-        if not manifest.description:
-            summary = _extract_release_summary(
-                _manifest_root(project_root, manifest) / NOTES_FILENAME
-            )
-            if summary:
-                manifest.description = summary
-        yield manifest
-
-    markdown_paths = [
-        path
-        for path in sorted(directory.glob(f"*/{NOTES_FILENAME}"))
-        if path.parent not in processed_dirs
-    ]
-    legacy_paths = sorted(directory.glob("*.md"))
-    yaml_paths = sorted(directory.glob("*.yaml"))
-
-    paths = markdown_paths + [path for path in legacy_paths if path.parent not in processed_dirs]
-    if not paths:
-        paths = yaml_paths
-
-    for path in paths:
-        data, body_text = _parse_frontmatter(path)
-
-        raw_description = str(data.get("description", "") or "").strip()
-        raw_intro = str(data.get("intro", "") or "").strip()
-        description = raw_description
-        intro = raw_intro
-
-        body_text = (body_text or "").strip()
-        if body_text:
-            if not description:
-                if "\n\n" in body_text:
-                    description_part, remainder = body_text.split("\n\n", 1)
-                    description = description_part.strip()
-                    remainder = remainder.strip()
-                    if not intro:
-                        intro = remainder
-                    elif remainder:
-                        intro = "\n\n".join([intro, remainder]).strip()
-                else:
-                    description = body_text
-            elif not intro:
-                intro = body_text
-
-        created_value = _parse_created_date(data.get("created"))
-        entries_value = _normalize_entries_field(data.get("entries"))
-
-        version_value = data.get("version")
-        if not version_value:
-            if path.name.lower() == "readme.md":
-                version_value = path.parent.name
-            else:
-                version_value = path.stem
-
-        manifest = ReleaseManifest(
-            version=str(version_value),
-            created=created_value,
-            entries=entries_value,
-            title=str(data.get("title", "")),
-            description=description,
-            intro=intro,
             path=path,
         )
         if not manifest.description:
@@ -263,19 +187,9 @@ def resolve_release_entry_path(
 ) -> Path | None:
     """Return the path to an entry file belonging to a release, if present."""
     root = _manifest_root(project_root, manifest)
-    candidates = [
-        root / "entries" / f"{entry_id}.md",
-        root / f"{entry_id}.md",
-        release_directory(project_root) / manifest.version / "entries" / f"{entry_id}.md",
-        release_directory(project_root) / manifest.version / f"{entry_id}.md",
-    ]
-    seen: set[Path] = set()
-    for candidate in candidates:
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        if candidate.exists():
-            return candidate
+    entry_path = root / "entries" / f"{entry_id}.md"
+    if entry_path.exists():
+        return entry_path
     return None
 
 

@@ -13,6 +13,14 @@
 - `tests/` stores pytest suites that exercise flows with `CliRunner`; mirror
   module names (e.g., `test_cli.py`) and keep fixtures close to usage.
 
+## Compatibility Strategy
+
+- Backwards compatibility is not a priority right now. Prefer simplifying the
+  codebase and documentation, even if that means breaking existing behavior or
+  data layouts.
+- Update the dogfooded project in `changelog/` alongside the CLI whenever
+  formats change instead of layering shims.
+
 ## Build, Test, and Development Commands
 
 - `uv sync --python 3.12` provisions dependencies into `.venv/`.
