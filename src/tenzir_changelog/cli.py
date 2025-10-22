@@ -707,7 +707,7 @@ def _render_single_entry(entry: Entry, release_versions: list[str]) -> None:
     console.print()
 
 
-@cli.command("show")
+@cli.command("list")
 @click.option("--project", "project_filter", multiple=True, help="Filter by project key.")
 @click.option(
     "--release",
@@ -721,34 +721,21 @@ def _render_single_entry(entry: Entry, release_versions: list[str]) -> None:
     help="Only show entries newer than the specified release version.",
 )
 @click.option("--banner", is_flag=True, help="Show a project banner above entries.")
-@click.option(
-    "--entry",
-    "entry_id",
-    default=None,
-    help="Show a specific changelog entry by ID (supports partial matching).",
-)
 @click.pass_obj
-def show(
+def list_entries(
     ctx: CLIContext,
     project_filter: tuple[str, ...],
     release_version: Optional[str],
     since_version: Optional[str],
     banner: bool,
-    entry_id: Optional[str],
 ) -> None:
-    """Display the current changelog or a specific release."""
+    """List changelog entries in a table."""
     config = ctx.ensure_config()
     project_root = ctx.project_root
     projects = set(project_filter)
 
     release_version = _normalize_optional(release_version)
     since_version = _normalize_optional(since_version)
-    entry_id = _normalize_optional(entry_id)
-
-    if entry_id:
-        entry, versions = _find_entry_by_id(project_root, entry_id)
-        _render_single_entry(entry, versions)
-        return
 
     if release_version:
         manifests = [
