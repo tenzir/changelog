@@ -16,7 +16,7 @@ row numbers in a `#` column, making it easy to reference specific entries:
 
 ```sh
 # List all entries with row numbers
-$ tenzir-changelog list
+❯ tenzir-changelog list
 ┏━━━┳━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━┓
 ┃ # ┃ Date       ┃ Version ┃ Title           ┃ Type ┃
 ┡━━━╇━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━┩
@@ -26,16 +26,16 @@ $ tenzir-changelog list
 └───┴────────────┴─────────┴─────────────────┴──────┘
 
 # Show entry by row number (simplest)
-$ tenzir-changelog show 2
+❯ tenzir-changelog show 2
 
 # Show multiple entries
-$ tenzir-changelog show 1 2 5
+❯ tenzir-changelog show 1 2 5
 
 # Show by entry ID (partial or full)
-$ tenzir-changelog show configure
+❯ tenzir-changelog show configure
 
 # Show all entries from a release
-$ tenzir-changelog show v0.2.0
+❯ tenzir-changelog show v0.2.0
 ```
 
 The detailed view displays metadata, release status, and formatted markdown body
