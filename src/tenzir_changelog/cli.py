@@ -12,7 +12,7 @@ from typing import Any, Iterable, Optional, TypedDict, Literal
 
 import click
 from click.core import ParameterSource
-from rich.console import RenderableType
+from rich.console import RenderableType, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -649,23 +649,18 @@ def _render_single_entry(entry: Entry, release_versions: list[str]) -> None:
     title.append(f"{type_emoji} ", style="bold")
     title.append(entry.title, style=f"bold {type_color}")
 
-    # Display title panel
-    console.print()
-    console.print(Panel(title, expand=False))
-    console.print()
-
     # Build metadata section
-    metadata_lines = []
-    metadata_lines.append(f"[bold]Entry ID:[/bold]  [cyan]{entry.entry_id}[/cyan]")
-    metadata_lines.append(f"[bold]Type:[/bold]      [{type_color}]{entry.type}[/{type_color}]")
+    metadata_parts = []
+    metadata_parts.append(f"Entry ID:  [cyan]{entry.entry_id}[/cyan]")
+    metadata_parts.append(f"Type:      [{type_color}]{entry.type}[/{type_color}]")
 
     if entry.created_at:
-        metadata_lines.append(f"[bold]Created:[/bold]   {entry.created_at}")
+        metadata_parts.append(f"Created:   {entry.created_at}")
 
     authors = entry.metadata.get("authors")
     if authors:
         authors_str = ", ".join(f"@{a}" for a in authors)
-        metadata_lines.append(f"[bold]Authors:[/bold]   {authors_str}")
+        metadata_parts.append(f"Authors:   {authors_str}")
 
     # Handle both 'pr' (single) and 'prs' (multiple)
     pr_numbers = []
@@ -675,31 +670,40 @@ def _render_single_entry(entry: Entry, release_versions: list[str]) -> None:
         pr_numbers.extend(entry.metadata["prs"])
     if pr_numbers:
         prs_str = ", ".join(f"#{pr}" for pr in pr_numbers)
-        metadata_lines.append(f"[bold]PRs:[/bold]       {prs_str}")
+        metadata_parts.append(f"PRs:       {prs_str}")
 
     # Status: released or unreleased
     if release_versions:
         versions_str = ", ".join(release_versions)
-        metadata_lines.append(f"[bold]Status:[/bold]    [green]Released in {versions_str}[/green]")
+        metadata_parts.append(f"Status:    [green]Released in {versions_str}[/green]")
     else:
-        metadata_lines.append("[bold]Status:[/bold]    [yellow]Unreleased[/yellow]")
+        metadata_parts.append("Status:    [yellow]Unreleased[/yellow]")
 
-    # Print metadata
-    for line in metadata_lines:
-        console.print(line)
+    metadata_text = Text.from_markup("\n".join(metadata_parts))
 
-    # Separator
-    console.print()
-    console.print("─" * min(console.width, 80))
-    console.print()
-
-    # Render the markdown body
+    # Build the markdown body
+    body_content: RenderableType
     if entry.body.strip():
-        markdown_content = Markdown(entry.body.strip())
-        console.print(markdown_content)
+        body_content = Markdown(entry.body.strip())
     else:
-        console.print("[dim]No description provided.[/dim]")
+        body_content = Text("No description provided.", style="dim")
 
+    # Create a divider that fits inside the panel
+    # Panel has 2 characters for borders and 2 for padding (left/right)
+    divider_width = max(40, console.width - 4)
+    divider = Text("─" * divider_width, style="dim")
+
+    # Combine all sections with dividers
+    content = Group(
+        metadata_text,
+        divider,
+        Text(""),
+        body_content,
+    )
+
+    # Display everything in a single panel with the title
+    console.print()
+    console.print(Panel(content, title=title, title_align="left", expand=True))
     console.print()
 
 
