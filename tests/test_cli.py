@@ -159,7 +159,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     plain_show = click.utils.strip_ansi(show_result.output)
     assert "Name:" not in plain_show
     assert "Types:" not in plain_show
-    assert "exciting-feature" in plain_show
+    assert "exciting-feature" in plain_show or "Exciting Feature" in plain_show
     assert "v1.0.0" in plain_show
 
     show_banner = runner.invoke(

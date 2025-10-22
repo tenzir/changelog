@@ -8,12 +8,13 @@ import textwrap
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, TypedDict, Literal
 
 import click
 from click.core import ParameterSource
-from rich.table import Table
+from rich.console import RenderableType
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
 from .config import (
@@ -79,6 +80,143 @@ TYPE_SECTION_TITLES = {
     "bugfix": "Bug fixes",
 }
 ENTRY_EXPORT_ORDER = ("feature", "change", "bugfix")
+
+
+OverflowMethod = Literal["fold", "crop", "ellipsis", "ignore"]
+JustifyMethod = Literal["default", "left", "center", "right", "full"]
+
+
+class ColumnSpec(TypedDict, total=False):
+    """Configuration for rendering a Rich table column."""
+
+    max_width: int
+    overflow: OverflowMethod
+    no_wrap: bool
+    min_width: int
+
+
+def _entries_table_layout(console_width: int) -> tuple[list[str], dict[str, ColumnSpec]]:
+    """Return the visible columns and their specs for the current terminal width."""
+
+    width = max(console_width, 60)
+    if width < 70:
+        columns = ["date", "title", "type"]
+        specs: dict[str, ColumnSpec] = {
+            "title": {"min_width": 24, "max_width": 36, "overflow": "ellipsis", "no_wrap": True},
+            "type": {"min_width": 3, "max_width": 4, "no_wrap": True},
+        }
+    elif width < 78:
+        columns = ["date", "version", "title", "type"]
+        specs = {
+            "version": {"max_width": 8, "no_wrap": True},
+            "title": {"min_width": 22, "max_width": 34, "overflow": "ellipsis", "no_wrap": True},
+            "type": {"min_width": 3, "max_width": 4, "no_wrap": True},
+        }
+    elif width < 88:
+        columns = ["date", "version", "title", "type", "pr"]
+        specs = {
+            "version": {"max_width": 9, "no_wrap": True},
+            "title": {"min_width": 22, "max_width": 32, "overflow": "ellipsis", "no_wrap": True},
+            "pr": {"max_width": 6, "no_wrap": True},
+            "type": {"min_width": 3, "max_width": 4, "no_wrap": True},
+        }
+    elif width < 110:
+        columns = ["date", "version", "title", "type", "pr", "authors"]
+        specs = {
+            "version": {"max_width": 9, "no_wrap": True},
+            "title": {"min_width": 22, "max_width": 30, "overflow": "ellipsis", "no_wrap": True},
+            "pr": {"max_width": 6, "no_wrap": True},
+            "authors": {
+                "min_width": 12,
+                "max_width": 16,
+                "overflow": "ellipsis",
+                "no_wrap": True,
+            },
+            "type": {"min_width": 3, "max_width": 4, "no_wrap": True},
+        }
+    elif width < 140:
+        columns = ["date", "version", "title", "type", "pr", "authors", "id"]
+        specs = {
+            "version": {"max_width": 10, "no_wrap": True},
+            "title": {"min_width": 22, "max_width": 36, "overflow": "ellipsis", "no_wrap": True},
+            "pr": {"max_width": 6, "no_wrap": True},
+            "authors": {
+                "min_width": 12,
+                "max_width": 18,
+                "overflow": "ellipsis",
+                "no_wrap": True,
+            },
+            "id": {"min_width": 20, "max_width": 26, "overflow": "ellipsis", "no_wrap": True},
+            "type": {"min_width": 3, "max_width": 4, "no_wrap": True},
+        }
+    else:
+        columns = ["date", "version", "title", "type", "pr", "authors", "id"]
+        specs = {
+            "version": {"max_width": 12, "no_wrap": True},
+            "title": {"min_width": 24, "max_width": 44, "overflow": "fold"},
+            "pr": {"max_width": 8, "no_wrap": True},
+            "authors": {"min_width": 16, "max_width": 24, "overflow": "fold"},
+            "id": {"min_width": 20, "max_width": 32, "overflow": "fold"},
+            "type": {"min_width": 3, "max_width": 4, "no_wrap": True},
+        }
+    return columns, specs
+
+
+def _ellipsis_cell(
+    value: str,
+    column: str,
+    specs: dict[str, ColumnSpec],
+    *,
+    style: str | None = None,
+) -> Text | str:
+    """Return a Text cell with ellipsis truncation when requested."""
+
+    spec = specs.get(column)
+    if not spec:
+        return value
+    overflow_mode = spec.get("overflow")
+    if overflow_mode != "ellipsis":
+        return value
+    width = spec.get("max_width") or spec.get("min_width")
+    if not width:
+        return value
+    text = Text(str(value), style=style or "")
+    plain = text.plain
+    if len(plain) > width:
+        text = Text(plain[: width - 1] + "…", style=style or "")
+    text.no_wrap = True
+    return text
+
+
+def _add_table_column(
+    table: Table,
+    header: str,
+    column_key: str,
+    specs: dict[str, ColumnSpec],
+    *,
+    style: str | None = None,
+    justify: JustifyMethod = "left",
+    overflow_default: OverflowMethod = "fold",
+    no_wrap_default: bool = False,
+) -> None:
+    spec = specs.get(column_key)
+    min_width = spec.get("min_width") if spec and "min_width" in spec else None
+    max_width = spec.get("max_width") if spec and "max_width" in spec else None
+    overflow = overflow_default
+    if spec and "overflow" in spec:
+        overflow = spec["overflow"]
+    no_wrap = no_wrap_default
+    if spec and "no_wrap" in spec:
+        no_wrap = spec["no_wrap"]
+    table.add_column(
+        header,
+        style=style,
+        justify=justify,
+        overflow=overflow,
+        min_width=min_width,
+        max_width=max_width,
+        no_wrap=no_wrap,
+    )
 
 
 @dataclass
@@ -294,14 +432,78 @@ def _render_entries(
     if show_banner:
         _render_project_header(config)
 
-    table = Table(show_lines=False, expand=True)
-    table.add_column("Date", style="yellow", no_wrap=True)
-    table.add_column("Version", style="cyan", no_wrap=True, max_width=12)
-    table.add_column("Title", style="bold", overflow="fold", max_width=44)
-    table.add_column("Type", style="magenta", no_wrap=True, justify="center")
-    table.add_column("PR", style="yellow", no_wrap=True)
-    table.add_column("Authors", style="blue", overflow="fold", max_width=20)
-    table.add_column("ID", style="cyan", no_wrap=True, max_width=28)
+    visible_columns, column_specs = _entries_table_layout(console.size.width)
+    table_width = max(console.size.width, 40)
+    table = Table(show_lines=False, expand=False, width=table_width, pad_edge=False)
+    if "date" in visible_columns:
+        _add_table_column(
+            table,
+            "Date",
+            "date",
+            column_specs,
+            style="yellow",
+            overflow_default="fold",
+            no_wrap_default=True,
+        )
+    if "version" in visible_columns:
+        _add_table_column(
+            table,
+            "Version",
+            "version",
+            column_specs,
+            style="cyan",
+            overflow_default="fold",
+            no_wrap_default=True,
+        )
+    if "title" in visible_columns:
+        _add_table_column(
+            table,
+            "Title",
+            "title",
+            column_specs,
+            style="bold",
+            overflow_default="fold",
+        )
+    if "type" in visible_columns:
+        _add_table_column(
+            table,
+            "Type",
+            "type",
+            column_specs,
+            style="magenta",
+            justify="center",
+            overflow_default="ellipsis",
+            no_wrap_default=True,
+        )
+    if "pr" in visible_columns:
+        _add_table_column(
+            table,
+            "PR",
+            "pr",
+            column_specs,
+            style="yellow",
+            overflow_default="fold",
+            no_wrap_default=True,
+        )
+    if "authors" in visible_columns:
+        _add_table_column(
+            table,
+            "Authors",
+            "authors",
+            column_specs,
+            style="blue",
+            overflow_default="fold",
+        )
+    if "id" in visible_columns:
+        _add_table_column(
+            table,
+            "ID",
+            "id",
+            column_specs,
+            style="cyan",
+            overflow_default="ellipsis",
+            no_wrap_default=True,
+        )
 
     has_rows = False
     sorted_entries = sort_entries_desc(list(entries))
@@ -314,15 +516,28 @@ def _render_entries(
         version_display = ", ".join(versions) if versions else "—"
         type_emoji = ENTRY_TYPE_EMOJIS.get(type_value, "•")
         type_display = Text(type_emoji, style=ENTRY_TYPE_STYLES.get(type_value, ""))
-        table.add_row(
-            created_display,
-            version_display,
-            metadata.get("title", "Untitled"),
-            type_display,
-            str(metadata.get("pr") or "—"),
-            ", ".join(metadata.get("authors") or []) or "—",
-            Text(entry.entry_id, style="cyan", overflow="ellipsis", no_wrap=True),
-        )
+        row: list[RenderableType] = []
+        if "date" in visible_columns:
+            row.append(created_display)
+        if "version" in visible_columns:
+            row.append(version_display)
+        if "title" in visible_columns:
+            row.append(_ellipsis_cell(metadata.get("title", "Untitled"), "title", column_specs))
+        if "type" in visible_columns:
+            row.append(type_display)
+        if "pr" in visible_columns:
+            row.append(str(metadata.get("pr") or "—"))
+        if "authors" in visible_columns:
+            row.append(
+                _ellipsis_cell(
+                    ", ".join(metadata.get("authors") or []) or "—",
+                    "authors",
+                    column_specs,
+                )
+            )
+        if "id" in visible_columns:
+            row.append(_ellipsis_cell(entry.entry_id, "id", column_specs, style="cyan"))
+        table.add_row(*row)
         has_rows = True
 
     if has_rows:
