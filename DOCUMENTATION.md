@@ -28,8 +28,9 @@ pipelines all share the same workflow.
    ```sh
    uvx tenzir-changelog
    ```
-   The default command renders the local changelog summary using the project
-   configuration and any staged or committed entry files.
+   The default `list` command renders a table of all entries with row numbers,
+   making it easy to reference specific entries. Use the project configuration
+   and any staged or committed entry files.
 3. Add a new changelog entry when you prepare a pull request:
    ```sh
    uvx tenzir-changelog add
@@ -53,11 +54,25 @@ to `config.yaml`) and `--root` to operate on another repository.
     name, and GitHub settings
   - Updates the config so future commands can reuse the defaults
 
-- **`tenzir-changelog` / `tenzir-changelog show`**  
-  Render the current changelog snapshot. Filters include:
+- **`tenzir-changelog` / `tenzir-changelog list`**
+  List changelog entries in a table with row numbers. The default command when
+  no command is specified. Accepts positional arguments to filter entries:
+  - Row numbers (e.g., `list 1 3 5`) to show specific entries
+  - Entry IDs (e.g., `list configure`) to filter by ID
+  - Version numbers (e.g., `list v0.2.0`) to show entries in a release
+
+  Additional filters include:
   - `--project <name>` to scope to a single project
   - `--release <id>` to display a specific release manifest
   - `--since <version>` to collate entries newer than the provided version tag
+  - `--banner` to show project information header
+
+- **`tenzir-changelog show <identifiers>`**
+  Display detailed view of one or more changelog entries with formatted markdown
+  body and syntax highlighting. Accepts the same identifier types as `list`:
+  - Row numbers (e.g., `show 2`) to view entry #2 in detail
+  - Entry IDs (e.g., `show configure`) to view by ID
+  - Version numbers (e.g., `show v0.2.0`) to view all entries in a release
 
 - **`tenzir-changelog add`**
 Create a new change entry in `unreleased/`. Highlights:
@@ -201,12 +216,16 @@ project root.
 If an entry spans multiple pull requests, repeat `--pr` during `add`. The CLI
 stores a `prs:` list in the generated frontmatter automatically.
 
-3. **Preview the changelog:**  
+3. **Preview the changelog:**
    ```sh
-   uvx tenzir-changelog show
+   uvx tenzir-changelog list
    ```
-   The command renders a table summarizing IDs, titles, types, project,
-   pull-request numbers, and authors for unreleased entries.
+   The command renders a table with row numbers summarizing IDs, titles, types,
+   project, pull-request numbers, and authors for unreleased entries. You can
+   view details of any entry using its row number:
+   ```sh
+   uvx tenzir-changelog show 1
+   ```
 
 4. **Prepare release notes:**  
    Author an intro snippet that can include Markdown links, call-outs, or image
