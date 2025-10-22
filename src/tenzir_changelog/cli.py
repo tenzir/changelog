@@ -674,7 +674,6 @@ def _render_single_entry(entry: Entry, release_versions: list[str]) -> None:
     content = Group(
         metadata_text,
         divider,
-        Text(""),
         body_content,
     )
 
@@ -685,6 +684,7 @@ def _render_single_entry(entry: Entry, release_versions: list[str]) -> None:
 
 
 @cli.command("list")
+@click.argument("identifiers", nargs=-1, required=False)
 @click.option("--project", "project_filter", multiple=True, help="Filter by project key.")
 @click.option(
     "--release",
@@ -701,12 +701,25 @@ def _render_single_entry(entry: Entry, release_versions: list[str]) -> None:
 @click.pass_obj
 def list_entries(
     ctx: CLIContext,
+    identifiers: tuple[str, ...],
     project_filter: tuple[str, ...],
     release_version: Optional[str],
     since_version: Optional[str],
     banner: bool,
 ) -> None:
-    """List changelog entries in a table."""
+    """List changelog entries in a table.
+
+    IDENTIFIERS can be:
+    - Row numbers (e.g., 1, 2, 3) to list specific entries
+    - Entry IDs, partial or full (e.g., configure) to filter by ID
+    - Version numbers (e.g., v0.2.0) to list entries in that release
+
+    Examples:
+      tenzir-changelog list             # List all entries
+      tenzir-changelog list 1 2 3       # List entries #1, #2, and #3
+      tenzir-changelog list configure   # List entries matching 'configure'
+      tenzir-changelog list v0.2.0      # List all entries in v0.2.0
+    """
     config = ctx.ensure_config()
     project_root = ctx.project_root
     projects = set(project_filter)
@@ -714,6 +727,7 @@ def list_entries(
     release_version = _normalize_optional(release_version)
     since_version = _normalize_optional(since_version)
 
+    # If --release is specified, show the release manifest
     if release_version:
         manifests = [
             m for m in iter_release_manifests(project_root) if m.version == release_version
@@ -724,6 +738,7 @@ def list_entries(
         _render_release(manifest, project_root, project_id=config.id)
         return
 
+    # Collect all entries (unreleased and released)
     entries = list(iter_entries(project_root))
     entry_map = {entry.entry_id: entry for entry in entries}
     released_entries = collect_release_entries(project_root)
@@ -731,8 +746,77 @@ def list_entries(
         if entry_id not in entry_map:
             entry_map[entry_id] = entry
 
-    entries = list(entry_map.values())
+    # Sort entries to match display order
+    sorted_entries = sort_entries_desc(list(entry_map.values()))
+
+    # Build release index
     release_index = build_entry_release_index(project_root, project=config.id)
+
+    # Filter by identifiers if provided
+    if identifiers:
+        filtered_entries = []
+        for identifier in identifiers:
+            # Try parsing as row number
+            try:
+                row_num = int(identifier)
+                if 1 <= row_num <= len(sorted_entries):
+                    filtered_entries.append(sorted_entries[row_num - 1])
+                    continue
+                else:
+                    raise click.ClickException(
+                        f"Row number {row_num} is out of range. "
+                        f"Valid range: 1-{len(sorted_entries)}"
+                    )
+            except ValueError:
+                pass  # Not an integer, continue to other matchers
+
+            # Try matching as version
+            if identifier.startswith("v") or identifier.startswith("V"):
+                manifests = [
+                    m for m in iter_release_manifests(project_root) if m.version == identifier
+                ]
+                if manifests:
+                    # Add all entries from this release
+                    manifest = manifests[0]
+                    for entry_id in manifest.entries:
+                        found_entry = entry_map.get(entry_id)
+                        if found_entry:
+                            filtered_entries.append(found_entry)
+                    continue
+                else:
+                    raise click.ClickException(f"Release '{identifier}' not found.")
+
+            # Try matching as entry ID (exact or partial)
+            exact_match = entry_map.get(identifier)
+            if exact_match:
+                filtered_entries.append(exact_match)
+                continue
+
+            # Partial match
+            matches = [(eid, entry) for eid, entry in entry_map.items() if identifier in eid]
+
+            if not matches:
+                raise click.ClickException(
+                    f"No entry found matching '{identifier}'. "
+                    "Use 'tenzir-changelog list' to see all entries."
+                )
+
+            if len(matches) > 1:
+                match_ids = [eid for eid, _ in matches]
+                raise click.ClickException(
+                    f"Multiple entries match '{identifier}':\n  "
+                    + "\n  ".join(match_ids)
+                    + "\n\nPlease be more specific or use a row number."
+                )
+
+            entry_id, entry = matches[0]
+            filtered_entries.append(entry)
+
+        entries = filtered_entries
+    else:
+        entries = sorted_entries
+
+    # Apply additional filters
     if since_version:
         excluded = _entries_before_or_equal_version(project_root, since_version)
         entries = [entry for entry in entries if entry.entry_id not in excluded]
@@ -1522,6 +1606,14 @@ def export_cmd(
 def main(argv: Optional[list[str]] = None) -> int:
     """Entry point for console_scripts."""
     argv = argv if argv is not None else sys.argv[1:]
+
+    # If no command is specified, default to 'list'
+    # Check if any arg is a known command
+    has_command = any(arg in cli.commands for arg in argv)
+    if not has_command:
+        # No command found, inject 'list' at the end (after options like --root)
+        argv = list(argv) + ["list"]
+
     try:
         cli.main(args=list(argv), prog_name="tenzir-changelog", standalone_mode=False)
     except click.ClickException as exc:

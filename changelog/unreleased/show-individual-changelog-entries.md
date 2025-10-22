@@ -3,7 +3,7 @@ title: Show individual changelog entries
 type: feature
 authors:
 - mavam
-- codex
+- claude
 created: 2025-10-22
 ---
 
