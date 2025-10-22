@@ -832,11 +832,16 @@ def show(ctx: CLIContext, identifiers: tuple[str, ...]) -> None:
     """Show detailed view of changelog entries.
 
     IDENTIFIERS can be:
+
+    \b
     - Row numbers from 'list' command (e.g., 1, 2, 3)
-    - Entry IDs, partial or full (e.g., configure, configure-export-style-defaults)
+    - Entry IDs, partial or full (e.g., configure,
+      configure-export-style-defaults)
     - Version numbers (e.g., v0.2.0) to show all entries in that release
 
     Examples:
+
+    \b
       tenzir-changelog show 1           # Show entry #1
       tenzir-changelog show 1 2 3       # Show entries #1, #2, and #3
       tenzir-changelog show configure   # Show entry matching 'configure'
