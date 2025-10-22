@@ -266,3 +266,71 @@ def test_missing_project_reports_info_message(tmp_path: Path) -> None:
     )
     assert click.utils.strip_ansi(result.output) == expected_plain_output
     assert "Error:" not in result.output
+
+
+def test_compact_export_style_from_config(tmp_path: Path) -> None:
+    runner = CliRunner()
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    config_path = workspace_root / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "id: sample",
+                "name: Sample Project",
+                "export_style: compact",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    add_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "add",
+            "--title",
+            "Compact Feature",
+            "--type",
+            "feature",
+            "--description",
+            "Adds compact defaults.",
+            "--author",
+            "",
+        ],
+    )
+    assert add_result.exit_code == 0, add_result.output
+
+    release_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "release",
+            "create",
+            "v0.1.0",
+            "--description",
+            "Alpha release.",
+            "--yes",
+        ],
+    )
+    assert release_result.exit_code == 0, release_result.output
+
+    release_notes_path = workspace_root / "releases" / "v0.1.0" / "notes.md"
+    release_notes = release_notes_path.read_text(encoding="utf-8")
+    assert "- **Compact Feature**: Adds compact defaults." in release_notes
+    assert "### Compact Feature" not in release_notes
+
+    export_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "export",
+            "--release",
+            "v0.1.0",
+        ],
+    )
+    assert export_result.exit_code == 0, export_result.output
+    assert "- **Compact Feature**: Adds compact defaults." in export_result.output

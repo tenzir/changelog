@@ -4,11 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, MutableMapping
+from typing import Any, Literal, Mapping, MutableMapping, cast
 
 import yaml
 
+ExportStyle = Literal["standard", "compact"]
 CONFIG_RELATIVE_PATH = Path("config.yaml")
+
+EXPORT_STYLE_STANDARD: ExportStyle = "standard"
+EXPORT_STYLE_COMPACT: ExportStyle = "compact"
+EXPORT_STYLE_CHOICES: tuple[ExportStyle, ...] = (
+    EXPORT_STYLE_STANDARD,
+    EXPORT_STYLE_COMPACT,
+)
 
 
 def default_config_path(project_root: Path) -> Path:
@@ -26,6 +34,7 @@ class Config:
     repository: str | None = None
     intro_template: str | None = None
     assets_dir: str | None = None
+    export_style: ExportStyle = EXPORT_STYLE_STANDARD
 
 
 def load_config(path: Path) -> Config:
@@ -51,6 +60,17 @@ def load_config(path: Path) -> Config:
     description_raw = raw.get("description", fallback_mapping.get("description", ""))
     repository_raw = raw.get("repository", fallback_mapping.get("repository"))
 
+    export_style_raw = raw.get("export_style")
+    export_style: ExportStyle = EXPORT_STYLE_STANDARD
+    if export_style_raw is not None:
+        if not isinstance(export_style_raw, str):
+            raise ValueError("Config option 'export_style' must be a string.")
+        normalized_export_style = export_style_raw.strip().lower()
+        if normalized_export_style not in EXPORT_STYLE_CHOICES:
+            allowed = ", ".join(EXPORT_STYLE_CHOICES)
+            raise ValueError(f"Config option 'export_style' must be one of: {allowed}")
+        export_style = cast(ExportStyle, normalized_export_style)
+
     return Config(
         id=project_value,
         name=str(name_raw or "Unnamed Project"),
@@ -58,6 +78,7 @@ def load_config(path: Path) -> Config:
         repository=(str(repository_raw) if repository_raw else None),
         intro_template=(str(raw["intro_template"]) if raw.get("intro_template") else None),
         assets_dir=str(raw["assets_dir"]) if raw.get("assets_dir") else None,
+        export_style=export_style,
     )
 
 
@@ -75,6 +96,8 @@ def dump_config(config: Config) -> dict[str, Any]:
         data["intro_template"] = config.intro_template
     if config.assets_dir:
         data["assets_dir"] = config.assets_dir
+    if config.export_style != EXPORT_STYLE_STANDARD:
+        data["export_style"] = config.export_style
     return data
 
 

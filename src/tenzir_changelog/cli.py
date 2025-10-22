@@ -11,11 +11,18 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 import click
+from click.core import ParameterSource
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 
-from .config import Config, default_config_path, load_config, save_config
+from .config import (
+    Config,
+    EXPORT_STYLE_COMPACT,
+    default_config_path,
+    load_config,
+    save_config,
+)
 from .entries import (
     ENTRY_TYPES,
     Entry,
@@ -804,6 +811,10 @@ def release_create(
     config = ctx.ensure_config()
     project_root = ctx.project_root
 
+    click_ctx = click.get_current_context()
+    if click_ctx.get_parameter_source("compact") == ParameterSource.DEFAULT:
+        compact = config.export_style == EXPORT_STYLE_COMPACT
+
     unused = _collect_unused_entries_for_release(project_root, config)
     if not unused:
         raise click.ClickException("No unused entries available for release creation.")
@@ -1052,6 +1063,10 @@ def export_cmd(
 
     config = ctx.ensure_config()
     project_root = ctx.project_root
+
+    click_ctx = click.get_current_context()
+    if click_ctx.get_parameter_source("compact") == ParameterSource.DEFAULT:
+        compact = config.export_style == EXPORT_STYLE_COMPACT
 
     release_version = _normalize_optional(release_version)
 

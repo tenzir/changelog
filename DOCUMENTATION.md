@@ -107,9 +107,11 @@ Create a new change entry in `unreleased/`. Highlights:
   templates or asset directories) so commands like `add` and `release create`
   can infer context without repeated flags. All options sit at the top level
   (`id`, `name`, `description`, `repository`, `intro_template`,
-  `assets_dir`), making the configuration easy to read and diff. The `id`
+  `assets_dir`, `export_style`), making the configuration easy to read and diff. The `id`
   serves as the canonical slug written into entry metadata, while `name`
   provides the human-friendly label surfaced in release titles and CLI output.
+  Set `export_style` to `compact` to prefer the bullet-list layout for release
+  notes and exports without passing `--compact` each time.
 - **Repositories:** A project may pull changelog entries from other repositories
   (e.g., satellites or private modules). Configuration entries include the
   repository slug, Git remote URL, and branch-to-track for releases.

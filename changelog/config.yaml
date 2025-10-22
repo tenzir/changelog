@@ -2,3 +2,4 @@ id: changelog
 name: Changelog
 description: The Tenzir Changelog Management Utility
 repository: tenzir/changelog
+export_style: compact
