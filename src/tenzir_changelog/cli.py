@@ -118,6 +118,21 @@ TYPE_SECTION_TITLES = {
     "bugfix": "Bug fixes",
 }
 ENTRY_EXPORT_ORDER = ("feature", "change", "bugfix")
+UNRELEASED_IDENTIFIER = "unreleased"
+DASH_IDENTIFIER = "-"
+
+
+IdentifierKind = Literal["row", "entry", "release", "unreleased"]
+
+
+@dataclass
+class IdentifierResolution:
+    """Mapping from an identifier to matching entries."""
+
+    kind: IdentifierKind
+    entries: list[Entry]
+    identifier: str
+    manifest: Optional[ReleaseManifest] = None
 
 
 OverflowMethod = Literal["fold", "crop", "ellipsis", "ignore"]
@@ -435,6 +450,14 @@ def _filter_entries_by_project(
         entry_project = entry.project or default_project
         if entry_project and entry_project in projects:
             filtered.append(entry)
+    return filtered
+
+
+def _collect_unused_entries_for_release(project_root: Path, config: Config) -> list[Entry]:
+    all_entries = list(iter_entries(project_root))
+    used = used_entry_ids(project_root)
+    unused = unused_entries(all_entries, used)
+    filtered = [entry for entry in unused if entry.project is None or entry.project == config.id]
     return filtered
 
 
@@ -780,64 +803,16 @@ def list_entries(
 
     # Filter by identifiers if provided
     if identifiers:
-        filtered_entries = []
+        filtered_entries: list[Entry] = []
         for identifier in identifiers:
-            # Try parsing as row number
-            try:
-                row_num = int(identifier)
-                if 1 <= row_num <= len(sorted_entries):
-                    filtered_entries.append(sorted_entries[row_num - 1])
-                    continue
-                else:
-                    raise click.ClickException(
-                        f"Row number {row_num} is out of range. "
-                        f"Valid range: 1-{len(sorted_entries)}"
-                    )
-            except ValueError:
-                pass  # Not an integer, continue to other matchers
-
-            # Try matching as version
-            if identifier.startswith("v") or identifier.startswith("V"):
-                manifests = [
-                    m for m in iter_release_manifests(project_root) if m.version == identifier
-                ]
-                if manifests:
-                    # Add all entries from this release
-                    manifest = manifests[0]
-                    for entry_id in manifest.entries:
-                        found_entry = entry_map.get(entry_id)
-                        if found_entry:
-                            filtered_entries.append(found_entry)
-                    continue
-                else:
-                    raise click.ClickException(f"Release '{identifier}' not found.")
-
-            # Try matching as entry ID (exact or partial)
-            exact_match = entry_map.get(identifier)
-            if exact_match:
-                filtered_entries.append(exact_match)
-                continue
-
-            # Partial match
-            matches = [(eid, entry) for eid, entry in entry_map.items() if identifier in eid]
-
-            if not matches:
-                raise click.ClickException(
-                    f"No entry found matching '{identifier}'. "
-                    "Use 'tenzir-changelog list' to see all entries."
-                )
-
-            if len(matches) > 1:
-                match_ids = [eid for eid, _ in matches]
-                raise click.ClickException(
-                    f"Multiple entries match '{identifier}':\n  "
-                    + "\n  ".join(match_ids)
-                    + "\n\nPlease be more specific or use a row number."
-                )
-
-            entry_id, entry = matches[0]
-            filtered_entries.append(entry)
-
+            resolution = _resolve_identifier(
+                identifier,
+                project_root=project_root,
+                config=config,
+                sorted_entries=sorted_entries,
+                entry_map=entry_map,
+            )
+            filtered_entries.extend(resolution.entries)
         entries = filtered_entries
     else:
         entries = sorted_entries
@@ -851,86 +826,219 @@ def list_entries(
     _render_entries(entries, release_index, config, show_banner=banner)
 
 
-@cli.command("show")
-@click.argument("identifiers", nargs=-1, required=True)
-@click.pass_obj
-def show(ctx: CLIContext, identifiers: tuple[str, ...]) -> None:
-    """Show detailed view of changelog entries."""
-    project_root = ctx.project_root
+def _load_release_entries_for_display(
+    project_root: Path,
+    release_version: str,
+    entry_map: dict[str, Entry],
+) -> tuple[ReleaseManifest, list[Entry]]:
+    normalized_version = release_version.strip()
+    manifests = [
+        manifest
+        for manifest in iter_release_manifests(project_root)
+        if manifest.version == normalized_version
+    ]
+    if not manifests:
+        raise click.ClickException(f"Release '{release_version}' not found.")
+    manifest = manifests[0]
+    missing_entries: list[str] = []
+    release_entries: list[Entry] = []
+    for entry_id in manifest.entries:
+        entry = entry_map.get(entry_id)
+        if entry is None:
+            entry = load_release_entry(project_root, manifest, entry_id)
+        if entry is None:
+            missing_entries.append(entry_id)
+            continue
+        entry_map[entry_id] = entry
+        release_entries.append(entry)
+    if missing_entries:
+        missing_list = ", ".join(sorted(missing_entries))
+        raise click.ClickException(
+            f"Release '{manifest.version}' is missing entry files for: {missing_list}"
+        )
+    return manifest, release_entries
 
-    # Collect all entries (unreleased and released)
+
+def _resolve_identifier(
+    identifier: str,
+    *,
+    project_root: Path,
+    config: Config,
+    sorted_entries: list[Entry],
+    entry_map: dict[str, Entry],
+) -> IdentifierResolution:
+    token = identifier.strip()
+    if not token:
+        raise click.ClickException("Identifier cannot be empty.")
+
+    lowered = token.lower()
+    if lowered in {UNRELEASED_IDENTIFIER, DASH_IDENTIFIER}:
+        entries = sort_entries_desc(_collect_unused_entries_for_release(project_root, config))
+        return IdentifierResolution(kind="unreleased", entries=entries, identifier=token)
+
+    try:
+        row_num = int(token)
+    except ValueError:
+        row_num = None
+
+    if row_num is not None:
+        if 1 <= row_num <= len(sorted_entries):
+            return IdentifierResolution(
+                kind="row",
+                entries=[sorted_entries[row_num - 1]],
+                identifier=token,
+            )
+        raise click.ClickException(
+            f"Row number {row_num} is out of range. Valid range: 1-{len(sorted_entries)}"
+        )
+
+    if token.startswith(("v", "V")):
+        manifest, release_entries = _load_release_entries_for_display(
+            project_root, token, entry_map
+        )
+        return IdentifierResolution(
+            kind="release",
+            entries=release_entries,
+            identifier=manifest.version,
+            manifest=manifest,
+        )
+
+    exact_match = entry_map.get(token)
+    if exact_match:
+        return IdentifierResolution(kind="entry", entries=[exact_match], identifier=token)
+
+    matches = [(entry_id, entry) for entry_id, entry in entry_map.items() if token in entry_id]
+    if not matches:
+        raise click.ClickException(
+            f"No entry found matching '{token}'. Use 'tenzir-changelog list' to see all entries."
+        )
+    if len(matches) > 1:
+        match_ids = [entry_id for entry_id, _ in matches]
+        raise click.ClickException(
+            f"Multiple entries match '{token}':\n  "
+            + "\n  ".join(match_ids)
+            + "\n\nPlease be more specific or use a row number."
+        )
+
+    entry_id, entry = matches[0]
+    return IdentifierResolution(kind="entry", entries=[entry], identifier=entry_id)
+
+
+@cli.command("show")
+@click.argument("identifiers", nargs=-1)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["terminal", "markdown", "json"], case_sensitive=False),
+    default="terminal",
+    show_default=True,
+    help="Output format.",
+)
+@click.option(
+    "-c",
+    "--compact",
+    "compact",
+    flag_value=True,
+    default=None,
+    help="Use the compact layout for Markdown and JSON output.",
+)
+@click.option(
+    "--no-compact",
+    "compact",
+    flag_value=False,
+    help="Disable the compact layout for Markdown and JSON output.",
+)
+@click.pass_obj
+def show(
+    ctx: CLIContext,
+    identifiers: tuple[str, ...],
+    output_format: str,
+    compact: Optional[bool],
+) -> None:
+    """Show changelog entries in the terminal or export them as Markdown/JSON."""
+    project_root = ctx.project_root
+    output_format = output_format.lower()
+
+    if not identifiers:
+        raise click.ClickException(
+            "Provide at least one identifier such as a row number, entry ID, release version, or the 'unreleased' token."
+        )
+
+    config = ctx.ensure_config()
+
     entries = list(iter_entries(project_root))
     entry_map = {entry.entry_id: entry for entry in entries}
     released_entries = collect_release_entries(project_root)
-    for eid, entry in released_entries.items():
-        if eid not in entry_map:
-            entry_map[eid] = entry
+    for entry_id, entry in released_entries.items():
+        if entry_id not in entry_map:
+            entry_map[entry_id] = entry
 
-    # Sort entries to match list order
     sorted_entries = sort_entries_desc(list(entry_map.values()))
+    resolutions = [
+        _resolve_identifier(
+            identifier,
+            project_root=project_root,
+            config=config,
+            sorted_entries=sorted_entries,
+            entry_map=entry_map,
+        )
+        for identifier in identifiers
+    ]
 
-    # Build release index
-    release_index = build_entry_release_index(project_root, project=None)
-
-    # Process each identifier
-    for identifier in identifiers:
-        # Try parsing as row number
-        try:
-            row_num = int(identifier)
-            if 1 <= row_num <= len(sorted_entries):
-                entry = sorted_entries[row_num - 1]
+    if output_format == "terminal":
+        if compact is not None:
+            raise click.ClickException(
+                "--compact/--no-compact only apply to markdown and json output."
+            )
+        release_index = build_entry_release_index(project_root, project=None)
+        for resolution in resolutions:
+            if resolution.kind == "unreleased" and not resolution.entries:
+                console.print("[yellow]No unreleased entries found.[/yellow]")
+                continue
+            for entry in resolution.entries:
                 versions = release_index.get(entry.entry_id, [])
+                if resolution.kind == "release" and resolution.manifest:
+                    version = resolution.manifest.version
+                    if version and version not in versions:
+                        versions = versions + [version]
                 _render_single_entry(entry, versions)
-                continue
-            else:
-                raise click.ClickException(
-                    f"Row number {row_num} is out of range. Valid range: 1-{len(sorted_entries)}"
-                )
-        except ValueError:
-            pass  # Not an integer, continue to other matchers
+        return
 
-        # Try matching as version
-        if identifier.startswith("v") or identifier.startswith("V"):
-            manifests = [m for m in iter_release_manifests(project_root) if m.version == identifier]
-            if manifests:
-                # Show all entries from this release
-                manifest = manifests[0]
-                for entry_id in manifest.entries:
-                    found_entry = entry_map.get(entry_id)
-                    if found_entry:
-                        versions = release_index.get(entry_id, [])
-                        _render_single_entry(found_entry, versions)
-                continue
-            else:
-                raise click.ClickException(f"Release '{identifier}' not found.")
+    if len(resolutions) != 1:
+        raise click.ClickException(
+            "Markdown and JSON output accept a single identifier. Use a release version, 'unreleased', or '-'."
+        )
 
-        # Try matching as entry ID (exact or partial)
-        exact_match = entry_map.get(identifier)
-        if exact_match:
-            versions = release_index.get(identifier, [])
-            _render_single_entry(exact_match, versions)
-            continue
+    resolution = resolutions[0]
+    if resolution.kind not in {"release", "unreleased"}:
+        raise click.ClickException(
+            "Markdown and JSON output require a release version or the 'unreleased' token."
+        )
 
-        # Partial match
-        matches = [(eid, entry) for eid, entry in entry_map.items() if identifier in eid]
+    compact_flag = config.export_style == EXPORT_STYLE_COMPACT if compact is None else compact
+    release_index_export = build_entry_release_index(project_root, project=config.id)
+    manifest = resolution.manifest if resolution.kind == "release" else None
+    export_entries = sort_entries_desc(list(resolution.entries))
 
-        if not matches:
-            raise click.ClickException(
-                f"No entry found matching '{identifier}'. "
-                "Use 'tenzir-changelog list' to see all entries."
+    if output_format == "markdown":
+        if compact_flag:
+            content = _export_markdown_compact(
+                manifest, export_entries, config, release_index_export
             )
-
-        if len(matches) > 1:
-            match_ids = [eid for eid, _ in matches]
-            raise click.ClickException(
-                f"Multiple entries match '{identifier}':\n  "
-                + "\n  ".join(match_ids)
-                + "\n\nPlease be more specific or use a row number."
+        else:
+            content = _export_markdown_release(
+                manifest, export_entries, config, release_index_export
             )
-
-        entry_id, entry = matches[0]
-        versions = release_index.get(entry_id, [])
-        _render_single_entry(entry, versions)
+        click.echo(content, nl=False)
+    else:
+        payload = _export_json_payload(
+            manifest,
+            export_entries,
+            config,
+            release_index_export,
+            compact=compact_flag,
+        )
+        click.echo(json.dumps(payload, indent=2))
 
 
 LIST_COMMAND_SUMMARY = "List changelog entries in a table."
@@ -938,20 +1046,20 @@ list_entries_help = _command_help_text(
     summary=LIST_COMMAND_SUMMARY,
     command_name="list",
     verb="list",
-    row_hint="Row numbers (e.g., 1, 2, 3) to list specific entries",
+    row_hint="Row numbers (e.g., 1, 2, 3) or 'unreleased'/'-' to list specific entries",
     version_hint="to list entries in that release",
 )
 list_entries.__doc__ = list_entries_help
 list_entries.help = list_entries_help
 list_entries.short_help = LIST_COMMAND_SUMMARY
 
-SHOW_COMMAND_SUMMARY = "Show detailed view of changelog entries."
+SHOW_COMMAND_SUMMARY = "Show or export changelog entries."
 show_help = _command_help_text(
     summary=SHOW_COMMAND_SUMMARY,
     command_name="show",
     verb="show",
-    row_hint="Row numbers from the 'list' command (e.g., 1, 2, 3)",
-    version_hint="to show all entries in that release",
+    row_hint="Row numbers (e.g., 1, 2, 3), 'unreleased', or '-'",
+    version_hint="to show or export all entries in that release",
 )
 show.__doc__ = show_help
 show.help = show_help
@@ -1209,14 +1317,6 @@ def add(
     console.print(f"[green]Entry created:[/green] {path.relative_to(project_root)}")
 
 
-def _collect_unused_entries_for_release(project_root: Path, config: Config) -> list[Entry]:
-    all_entries = list(iter_entries(project_root))
-    used = used_entry_ids(project_root)
-    unused = unused_entries(all_entries, used)
-    filtered = [entry for entry in unused if entry.project is None or entry.project == config.id]
-    return filtered
-
-
 def _render_release_notes(entries: list[Entry], config: Config) -> str:
     """Render Markdown sections for the provided entries."""
 
@@ -1283,12 +1383,7 @@ def _render_release_notes_compact(entries: list[Entry], config: Config) -> str:
     return "\n".join(lines).strip()
 
 
-@cli.group("release")
-def release() -> None:
-    """Release management commands."""
-
-
-@release.command("create")
+@cli.command("release")
 @click.argument("version")
 @click.option("--title", help="Display title for the release.")
 @click.option("--description", default="", help="Short release description.")
@@ -1316,7 +1411,7 @@ def release() -> None:
     help="Skip confirmation prompts and run non-interactively.",
 )
 @click.pass_obj
-def release_create(
+def release_cmd(
     ctx: CLIContext,
     version: str,
     title: Optional[str],
@@ -1553,93 +1648,6 @@ def _export_json_payload(
     if compact:
         data["compact"] = True
     return data
-
-
-@cli.command("export")
-@click.option(
-    "--format",
-    "export_format",
-    type=click.Choice(["markdown", "json"], case_sensitive=False),
-    default="markdown",
-    show_default=True,
-    help="Output format",
-)
-@click.option(
-    "--compact/--no-compact",
-    default=False,
-    show_default=True,
-    help="Use compact layout for the exported content.",
-)
-@click.option("--release", "release_version", help="Release version to export.")
-@click.pass_obj
-def export_cmd(
-    ctx: CLIContext,
-    export_format: str,
-    compact: bool,
-    release_version: Optional[str],
-) -> None:
-    """Export changelog content as Markdown or JSON."""
-
-    config = ctx.ensure_config()
-    project_root = ctx.project_root
-
-    click_ctx = click.get_current_context()
-    if click_ctx.get_parameter_source("compact") == ParameterSource.DEFAULT:
-        compact = config.export_style == EXPORT_STYLE_COMPACT
-
-    release_version = _normalize_optional(release_version)
-
-    entries = list(iter_entries(project_root))
-    entry_map = {entry.entry_id: entry for entry in entries}
-    release_index = build_entry_release_index(project_root, project=config.id)
-
-    manifest: Optional[ReleaseManifest] = None
-    export_entries: list[Entry]
-
-    if release_version:
-        manifests = [
-            m for m in iter_release_manifests(project_root) if m.version == release_version
-        ]
-        if not manifests:
-            raise click.ClickException(f"Release '{release_version}' not found.")
-        manifest = manifests[0]
-        missing_entries: list[str] = []
-        export_entries = []
-        for entry_id in manifest.entries:
-            entry = entry_map.get(entry_id)
-            if entry is None:
-                entry = load_release_entry(project_root, manifest, entry_id)
-            if entry is None:
-                missing_entries.append(entry_id)
-                continue
-            entry_map[entry_id] = entry
-            export_entries.append(entry)
-        if missing_entries:
-            missing_list = ", ".join(sorted(missing_entries))
-            raise click.ClickException(
-                f"Release '{manifest.version}' is missing entry files for: {missing_list}"
-            )
-    else:
-        export_entries = _collect_unused_entries_for_release(project_root, config)
-
-    export_entries = sort_entries_desc(export_entries)
-
-    export_format = export_format.lower()
-    if export_format == "markdown":
-        if compact:
-            content = _export_markdown_compact(manifest, export_entries, config, release_index)
-        else:
-            content = _export_markdown_release(manifest, export_entries, config, release_index)
-        click.echo(content, nl=False)
-    else:
-        payload = _export_json_payload(
-            manifest,
-            export_entries,
-            config,
-            release_index,
-            compact=compact,
-        )
-        click.echo(json.dumps(payload, indent=2))
 
 
 def main(argv: Optional[list[str]] = None) -> int:

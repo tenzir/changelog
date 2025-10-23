@@ -108,7 +108,6 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
             "--root",
             str(workspace_root),
             "release",
-            "create",
             "v1.0.0",
             "--description",
             "First stable release.",
@@ -181,53 +180,60 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert "exciting-feature" in release_plain
     assert "fix-ingest-crash" in release_plain
 
-    export_md = runner.invoke(
-        cli,
-        ["--root", str(workspace_root), "export", "--release", "v1.0.0"],
-    )
-    assert export_md.exit_code == 0, export_md.output
-    assert "## Features" in export_md.output
-    assert "### Exciting Feature" in export_md.output
-    assert "By [octocat](https://github.com/octocat)" in export_md.output
-    assert "in #42" in export_md.output
-    assert "### Fix ingest crash" in export_md.output
-    assert "#102" in export_md.output and "#115" in export_md.output
-
-    export_compact = runner.invoke(
+    show_md = runner.invoke(
         cli,
         [
             "--root",
             str(workspace_root),
-            "export",
-            "--release",
+            "show",
+            "--format",
+            "markdown",
             "v1.0.0",
-            "--compact",
         ],
     )
-    assert export_compact.exit_code == 0, export_compact.output
-    assert "## Features" in export_compact.output
-    assert "- **Exciting Feature**: Adds an exciting capability." in export_compact.output
-    assert "## Bug fixes" in export_compact.output
+    assert show_md.exit_code == 0, show_md.output
+    assert "## Features" in show_md.output
+    assert "### Exciting Feature" in show_md.output
+    assert "By [octocat](https://github.com/octocat)" in show_md.output
+    assert "in #42" in show_md.output
+    assert "### Fix ingest crash" in show_md.output
+    assert "#102" in show_md.output and "#115" in show_md.output
+
+    show_compact = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "show",
+            "--format",
+            "markdown",
+            "-c",
+            "v1.0.0",
+        ],
+    )
+    assert show_compact.exit_code == 0, show_compact.output
+    assert "## Features" in show_compact.output
+    assert "- **Exciting Feature**: Adds an exciting capability." in show_compact.output
+    assert "## Bug fixes" in show_compact.output
     assert (
         "- **Fix ingest crash**: Resolves ingest worker crash when tokens expire."
-        in export_compact.output
+        in show_compact.output
     )
 
-    export_json = runner.invoke(
+    show_json = runner.invoke(
         cli,
         [
             "--root",
             str(workspace_root),
-            "export",
-            "--release",
-            "v1.0.0",
+            "show",
             "--format",
             "json",
-            "--compact",
+            "-c",
+            "v1.0.0",
         ],
     )
-    assert export_json.exit_code == 0, export_json.output
-    payload = json.loads(export_json.output)
+    assert show_json.exit_code == 0, show_json.output
+    payload = json.loads(show_json.output)
     assert payload["version"] == "v1.0.0"
     assert payload["project"] == "node"
     feature_entry = next(
@@ -308,7 +314,6 @@ def test_compact_export_style_from_config(tmp_path: Path) -> None:
             "--root",
             str(workspace_root),
             "release",
-            "create",
             "v0.1.0",
             "--description",
             "Alpha release.",
@@ -322,15 +327,142 @@ def test_compact_export_style_from_config(tmp_path: Path) -> None:
     assert "- **Compact Feature**: Adds compact defaults." in release_notes
     assert "### Compact Feature" not in release_notes
 
-    export_result = runner.invoke(
+    show_result = runner.invoke(
         cli,
         [
             "--root",
             str(workspace_root),
-            "export",
-            "--release",
+            "show",
+            "--format",
+            "markdown",
             "v0.1.0",
         ],
     )
-    assert export_result.exit_code == 0, export_result.output
-    assert "- **Compact Feature**: Adds compact defaults." in export_result.output
+    assert show_result.exit_code == 0, show_result.output
+    assert "- **Compact Feature**: Adds compact defaults." in show_result.output
+
+
+def test_show_unreleased_token(tmp_path: Path) -> None:
+    runner = CliRunner()
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root / "config.yaml").write_text(
+        "\n".join(
+            [
+                "id: sample",
+                "name: Sample Project",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    add_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "add",
+            "--title",
+            "Pending Feature",
+            "--type",
+            "feature",
+            "--description",
+            "Show unreleased entries via token.",
+            "--author",
+            "",
+        ],
+    )
+    assert add_result.exit_code == 0, add_result.output
+
+    terminal_result = runner.invoke(
+        cli,
+        ["--root", str(workspace_root), "show", "unreleased"],
+    )
+    assert terminal_result.exit_code == 0, terminal_result.output
+    plain_output = click.utils.strip_ansi(terminal_result.output)
+    assert "Pending Feature" in plain_output
+
+    dash_terminal = runner.invoke(
+        cli,
+        ["--root", str(workspace_root), "show", "--", "-"],
+    )
+    assert dash_terminal.exit_code == 0, dash_terminal.output
+    dash_output = click.utils.strip_ansi(dash_terminal.output)
+    assert "Pending Feature" in dash_output
+
+    markdown_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "show",
+            "--format",
+            "markdown",
+            "unreleased",
+        ],
+    )
+    assert markdown_result.exit_code == 0, markdown_result.output
+    assert "# Unreleased Changes" in markdown_result.output
+    assert "### Pending Feature" in markdown_result.output
+
+    markdown_dash = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "show",
+            "--format",
+            "markdown",
+            "--",
+            "-",
+        ],
+    )
+    assert markdown_dash.exit_code == 0, markdown_dash.output
+    assert "# Unreleased Changes" in markdown_dash.output
+
+    json_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "show",
+            "--format",
+            "json",
+            "unreleased",
+        ],
+    )
+    assert json_result.exit_code == 0, json_result.output
+    payload = json.loads(json_result.output)
+    assert payload["version"] is None
+    assert payload["entries"]
+    pending_entry = payload["entries"][0]
+    assert pending_entry["title"] == "Pending Feature"
+    assert pending_entry["project"] == "sample"
+
+    json_dash = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "show",
+            "--format",
+            "json",
+            "--",
+            "-",
+        ],
+    )
+    assert json_dash.exit_code == 0, json_dash.output
+    dash_payload = json.loads(json_dash.output)
+    assert dash_payload["entries"][0]["title"] == "Pending Feature"
+
+    list_unreleased = runner.invoke(
+        cli,
+        ["--root", str(workspace_root), "list", "unreleased"],
+    )
+    assert list_unreleased.exit_code == 0, list_unreleased.output
+
+    list_dash = runner.invoke(
+        cli,
+        ["--root", str(workspace_root), "list", "--", "-"],
+    )
+    assert list_dash.exit_code == 0, list_dash.output

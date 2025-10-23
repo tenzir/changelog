@@ -68,11 +68,18 @@ to `config.yaml`) and `--root` to operate on another repository.
   - `--banner` to show project information header
 
 - **`tenzir-changelog show <identifiers>`**
-  Display detailed view of one or more changelog entries with formatted markdown
-  body and syntax highlighting. Accepts the same identifier types as `list`:
-  - Row numbers (e.g., `show 2`) to view entry #2 in detail
-  - Entry IDs (e.g., `show configure`) to view by ID
-  - Version numbers (e.g., `show v0.2.0`) to view all entries in a release
+  Inspect changelog entries in the terminal or export them as Markdown or JSON.
+  Accepts row numbers, entry IDs (full or partial), release versions, and the
+  tokens `unreleased` or `-` to target pending entries.
+  - `--format terminal|markdown|json` (default `terminal`) chooses the output
+    format.
+  - `-c/--compact` (and `--no-compact`) toggles the compact bullet layout for
+    Markdown/JSON output, defaulting to the project's `export_style`.
+
+  When emitting Markdown or JSON, pass either a release version or the
+  `unreleased` token. Example: `uv run tenzir-changelog --root changelog show --format markdown v0.2.0 > changelog/releases/v0.2.0/notes.md`
+  rewrites release notes in the standard layout; adding `-c` switches to the
+  compact summary.
 
 - **`tenzir-changelog add`**
 Create a new change entry in `unreleased/`. Highlights:
@@ -85,7 +92,7 @@ Create a new change entry in `unreleased/`. Highlights:
   - Enforces naming conventions, validates required frontmatter, and can append
     changelog fragments to an existing draft entry
 
-- **`tenzir-changelog release create`**
+- **`tenzir-changelog release <version>`**
   Assemble a release manifest under `releases/` that lists all unused entry IDs
   for the configured project in `config.yaml`. Release metadata lands in
   `releases/<version>/manifest.yaml`, Markdown notes render in `notes.md`, and
@@ -95,15 +102,6 @@ Create a new change entry in `unreleased/`. Highlights:
   `--compact` flag to emit bullet-point notes. You can supply additional
   narrative via `--intro-file`, and the CLI prints the
   manifest path plus a summary of included entries.
-
-- **`tenzir-changelog export`**
-  Export unreleased changes or a specific release to STDOUT. Use `--release
-  <version>` to select a release and `--format markdown|json` (default
-  `markdown`) to choose the output format.
-  - Tip: Re-run the exporter to refresh an existing release README. For example,
-    `uv run tenzir-changelog --root changelog export --release v0.2.0 > changelog/releases/v0.2.0/notes.md`
-    rewrites the notes in the standard layout, while adding `--compact` switches
-    to the terse summary.
 
 - **`tenzir-changelog validate`**
   Run structural checks across entry files, release manifests, and exported
@@ -119,14 +117,15 @@ Create a new change entry in `unreleased/`. Highlights:
 - **Configuration File:** Settings live in `config.yaml` by default. The file
   captures repository metadata, the single project name, GitHub repository
   slugs, and any other instance-specific options (such as preferred intro
-  templates or asset directories) so commands like `add` and `release create`
+  templates or asset directories) so commands like `add` and `release`
   can infer context without repeated flags. All options sit at the top level
   (`id`, `name`, `description`, `repository`, `intro_template`,
   `assets_dir`, `export_style`), making the configuration easy to read and diff. The `id`
   serves as the canonical slug written into entry metadata, while `name`
   provides the human-friendly label surfaced in release titles and CLI output.
   Set `export_style` to `compact` to prefer the bullet-list layout for release
-  notes and exports without passing `--compact` each time.
+  notes and `tenzir-changelog show --format markdown` without passing `-c`
+  each time.
 - **Repositories:** A project may pull changelog entries from other repositories
   (e.g., satellites or private modules). Configuration entries include the
   repository slug, Git remote URL, and branch-to-track for releases.
@@ -298,10 +297,11 @@ stores a `prs:` list in the generated frontmatter automatically.
 
 7. **Export the release:**  
    ```sh
-   uvx tenzir-changelog export --release v0.1.0
+   uvx tenzir-changelog show --format markdown v0.1.0
    ```
    The command prints a Markdown summary grouped by entry type to STDOUT. Use
-   `--format json` to generate machine-readable output for automation.
+   `--format json` for machine-readable output or add `-c` for the compact
+   bullet list.
 
 ## Troubleshooting
 
