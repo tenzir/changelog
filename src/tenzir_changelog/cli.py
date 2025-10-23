@@ -474,6 +474,54 @@ def _filter_entries_by_project(
     return filtered
 
 
+def _build_release_sort_order(project_root: Path) -> dict[str, int]:
+    """Return a mapping from release version to display order rank."""
+    manifests = list(iter_release_manifests(project_root))
+    manifests.sort(key=lambda manifest: (manifest.created, manifest.version), reverse=True)
+    return {manifest.version: index for index, manifest in enumerate(manifests)}
+
+
+def _sort_entries_for_display(
+    entries: Iterable[Entry],
+    release_index: dict[str, list[str]],
+    release_order: dict[str, int],
+) -> list[Entry]:
+    """Sort entries by release recency first, then date."""
+    entries_list = list(entries)
+    fallback_rank = len(release_order) + 1
+
+    def sort_key(entry: Entry) -> tuple[int, int, int, str]:
+        versions = release_index.get(entry.entry_id) or []
+        if versions:
+            ranks = [release_order.get(version, fallback_rank) for version in versions]
+            release_rank = min(ranks) + 1
+        else:
+            release_rank = 0  # unreleased entries first
+        created = entry.created_at or date.min
+        created_ord = created.toordinal()
+        return (release_rank, -created_ord, -entry.sequence, entry.entry_id)
+
+    return sorted(entries_list, key=sort_key)
+
+
+def _entry_release_group(
+    entry: Entry,
+    release_index: dict[str, list[str]],
+    release_order: dict[str, int] | None,
+) -> str | None:
+    """Return the primary release identifier for grouping."""
+    versions = release_index.get(entry.entry_id) or []
+    if not versions:
+        return None
+    if release_order:
+        fallback_rank = len(release_order) + 1
+        ranked_versions = sorted(
+            versions, key=lambda version: release_order.get(version, fallback_rank)
+        )
+        return ranked_versions[0]
+    return sorted(versions)[0]
+
+
 def _collect_unused_entries_for_release(project_root: Path, config: Config) -> list[Entry]:
     all_entries = list(iter_entries(project_root))
     used = used_entry_ids(project_root)
@@ -516,6 +564,7 @@ def _render_entries(
     release_index: dict[str, list[str]],
     config: Config,
     show_banner: bool = False,
+    release_order: dict[str, int] | None = None,
 ) -> None:
     if show_banner:
         _render_project_header(config)
@@ -605,7 +654,14 @@ def _render_entries(
         )
 
     has_rows = False
-    sorted_entries = sort_entries_desc(list(entries))
+    if release_order is not None:
+        sorted_entries = _sort_entries_for_display(entries, release_index, release_order)
+        release_groups = [
+            _entry_release_group(entry, release_index, release_order) for entry in sorted_entries
+        ]
+    else:
+        sorted_entries = sort_entries_desc(list(entries))
+        release_groups = [None] * len(sorted_entries)
 
     for row_num, entry in enumerate(sorted_entries, start=1):
         metadata = entry.metadata
@@ -638,7 +694,14 @@ def _render_entries(
             )
         if "id" in visible_columns:
             row.append(_ellipsis_cell(entry.entry_id, "id", column_specs, style="cyan"))
-        table.add_row(*row)
+        end_section = False
+        if release_order is not None and row_num - 1 < len(sorted_entries) - 1:
+            current_group = release_groups[row_num - 1]
+            next_group = release_groups[row_num]
+            if current_group != next_group:
+                end_section = True
+
+        table.add_row(*row, end_section=end_section)
         has_rows = True
 
     if has_rows:
@@ -822,11 +885,12 @@ def list_entries(
         if entry_id not in entry_map:
             entry_map[entry_id] = entry
 
-    # Sort entries to match display order
-    sorted_entries = sort_entries_desc(list(entry_map.values()))
-
     # Build release index
     release_index = build_entry_release_index(project_root, project=config.id)
+    release_order = _build_release_sort_order(project_root)
+
+    # Sort entries to match display order
+    sorted_entries = _sort_entries_for_display(entry_map.values(), release_index, release_order)
 
     # Filter by identifiers if provided
     if identifiers:
@@ -850,7 +914,10 @@ def list_entries(
         entries = [entry for entry in entries if entry.entry_id not in excluded]
 
     entries = _filter_entries_by_project(entries, projects, config.id)
-    _render_entries(entries, release_index, config, show_banner=banner)
+    render_release_order = release_order if not identifiers else None
+    _render_entries(
+        entries, release_index, config, show_banner=banner, release_order=render_release_order
+    )
 
 
 def _load_release_entries_for_display(
@@ -1007,7 +1074,9 @@ def show(
         if entry_id not in entry_map:
             entry_map[entry_id] = entry
 
-    sorted_entries = sort_entries_desc(list(entry_map.values()))
+    release_index_all = build_entry_release_index(project_root, project=None)
+    release_order = _build_release_sort_order(project_root)
+    sorted_entries = _sort_entries_for_display(entry_map.values(), release_index_all, release_order)
     resolutions = [
         _resolve_identifier(
             identifier,
@@ -1024,7 +1093,7 @@ def show(
             raise click.ClickException(
                 "--compact/--no-compact only apply to markdown and json output."
             )
-        release_index = build_entry_release_index(project_root, project=None)
+        release_index = release_index_all
         for resolution in resolutions:
             if resolution.kind == "unreleased" and not resolution.entries:
                 console.print("[yellow]No unreleased entries found.[/yellow]")
