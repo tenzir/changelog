@@ -192,12 +192,31 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         ],
     )
     assert show_md.exit_code == 0, show_md.output
-    assert "## Features" in show_md.output
+    assert "## 🌟 Features" in show_md.output
     assert "### Exciting Feature" in show_md.output
     assert "By [octocat](https://github.com/octocat)" in show_md.output
     assert "in #42" in show_md.output
     assert "### Fix ingest crash" in show_md.output
     assert "#102" in show_md.output and "#115" in show_md.output
+
+    show_md_plain = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "show",
+            "--format",
+            "markdown",
+            "--no-emoji",
+            "v1.0.0",
+        ],
+    )
+    assert show_md_plain.exit_code == 0, show_md_plain.output
+    assert "## Features" in show_md_plain.output
+    assert "### Exciting Feature" in show_md_plain.output
+    assert "### Fix ingest crash" in show_md_plain.output
+    assert "🌟" not in show_md_plain.output
+    assert "🐞" not in show_md_plain.output
 
     show_compact = runner.invoke(
         cli,
@@ -212,13 +231,35 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         ],
     )
     assert show_compact.exit_code == 0, show_compact.output
-    assert "## Features" in show_compact.output
+    assert "## 🌟 Features" in show_compact.output
     assert "- **Exciting Feature**: Adds an exciting capability." in show_compact.output
-    assert "## Bug fixes" in show_compact.output
+    assert "## 🐞 Bug fixes" in show_compact.output
     assert (
         "- **Fix ingest crash**: Resolves ingest worker crash when tokens expire."
         in show_compact.output
     )
+
+    show_compact_plain = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "show",
+            "--format",
+            "markdown",
+            "--no-emoji",
+            "-c",
+            "v1.0.0",
+        ],
+    )
+    assert show_compact_plain.exit_code == 0, show_compact_plain.output
+    assert "## Features" in show_compact_plain.output
+    assert "- **Exciting Feature**: Adds an exciting capability." in show_compact_plain.output
+    assert "- **Fix ingest crash**: Resolves ingest worker crash when tokens expire." in (
+        show_compact_plain.output
+    )
+    assert "🌟" not in show_compact_plain.output
+    assert "🐞" not in show_compact_plain.output
 
     show_json = runner.invoke(
         cli,
@@ -252,6 +293,27 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert bugfix_entry["project"] == "node"
     assert bugfix_entry.get("excerpt") == "Resolves ingest worker crash when tokens expire."
     assert payload.get("compact") is True
+
+    show_json_plain = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "show",
+            "--format",
+            "json",
+            "--no-emoji",
+            "-c",
+            "v1.0.0",
+        ],
+    )
+    assert show_json_plain.exit_code == 0, show_json_plain.output
+    payload_plain = json.loads(show_json_plain.output)
+    plain_feature = next(
+        entry for entry in payload_plain["entries"] if entry["title"] == "Exciting Feature"
+    )
+    assert plain_feature["prs"] == [42]
+    assert all("🌟" not in entry["title"] for entry in payload_plain["entries"])
 
     validate_result = runner.invoke(
         cli,
@@ -405,6 +467,22 @@ def test_show_unreleased_token(tmp_path: Path) -> None:
     assert "# Unreleased Changes" in markdown_result.output
     assert "### Pending Feature" in markdown_result.output
 
+    markdown_plain = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "show",
+            "--format",
+            "markdown",
+            "--no-emoji",
+            "unreleased",
+        ],
+    )
+    assert markdown_plain.exit_code == 0, markdown_plain.output
+    assert "### Pending Feature" in markdown_plain.output
+    assert "🌟 Pending Feature" not in markdown_plain.output
+
     markdown_dash = runner.invoke(
         cli,
         [
@@ -438,6 +516,22 @@ def test_show_unreleased_token(tmp_path: Path) -> None:
     pending_entry = payload["entries"][0]
     assert pending_entry["title"] == "Pending Feature"
     assert pending_entry["project"] == "sample"
+
+    json_plain = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(workspace_root),
+            "show",
+            "--format",
+            "json",
+            "--no-emoji",
+            "unreleased",
+        ],
+    )
+    assert json_plain.exit_code == 0, json_plain.output
+    payload_no_emoji = json.loads(json_plain.output)
+    assert payload_no_emoji["entries"][0]["title"] == "Pending Feature"
 
     json_dash = runner.invoke(
         cli,

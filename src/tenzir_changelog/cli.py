@@ -60,6 +60,17 @@ ENTRY_TYPE_EMOJIS = {
 }
 
 
+def _format_section_title(entry_type: str, include_emoji: bool) -> str:
+    """Return the section title with an optional type emoji prefix."""
+    section_title = TYPE_SECTION_TITLES.get(entry_type, entry_type.title())
+    if not include_emoji:
+        return section_title
+    emoji = ENTRY_TYPE_EMOJIS.get(entry_type)
+    if not emoji:
+        return section_title
+    return f"{emoji} {section_title}"
+
+
 def _command_help_text(
     summary: str,
     command_name: str,
@@ -677,14 +688,20 @@ def _render_release(
     console.print(table)
 
 
-def _render_single_entry(entry: Entry, release_versions: list[str]) -> None:
+def _render_single_entry(
+    entry: Entry,
+    release_versions: list[str],
+    *,
+    include_emoji: bool = True,
+) -> None:
     """Display a single changelog entry with formatted output."""
     # Build title with emoji and type color
-    type_emoji = ENTRY_TYPE_EMOJIS.get(entry.type, "•")
     type_color = ENTRY_TYPE_STYLES.get(entry.type, "white")
 
     title = Text()
-    title.append(f"{type_emoji} ", style="bold")
+    if include_emoji:
+        type_emoji = ENTRY_TYPE_EMOJIS.get(entry.type, "•")
+        title.append(f"{type_emoji} ", style="bold")
     title.append(entry.title, style=f"bold {type_color}")
 
     # Build metadata section
@@ -948,12 +965,18 @@ def _resolve_identifier(
     flag_value=False,
     help="Disable the compact layout for Markdown and JSON output.",
 )
+@click.option(
+    "--no-emoji",
+    is_flag=True,
+    help="Disable type emoji in entry headings.",
+)
 @click.pass_obj
 def show(
     ctx: CLIContext,
     identifiers: tuple[str, ...],
     output_format: str,
     compact: Optional[bool],
+    no_emoji: bool,
 ) -> None:
     """Show changelog entries in the terminal or export them as Markdown/JSON."""
     project_root = ctx.project_root
@@ -965,6 +988,7 @@ def show(
         )
 
     config = ctx.ensure_config()
+    include_emoji = not no_emoji
 
     entries = list(iter_entries(project_root))
     entry_map = {entry.entry_id: entry for entry in entries}
@@ -1001,7 +1025,7 @@ def show(
                     version = resolution.manifest.version
                     if version and version not in versions:
                         versions = versions + [version]
-                _render_single_entry(entry, versions)
+                _render_single_entry(entry, versions, include_emoji=include_emoji)
         return
 
     if len(resolutions) != 1:
@@ -1023,11 +1047,19 @@ def show(
     if output_format == "markdown":
         if compact_flag:
             content = _export_markdown_compact(
-                manifest, export_entries, config, release_index_export
+                manifest,
+                export_entries,
+                config,
+                release_index_export,
+                include_emoji=include_emoji,
             )
         else:
             content = _export_markdown_release(
-                manifest, export_entries, config, release_index_export
+                manifest,
+                export_entries,
+                config,
+                release_index_export,
+                include_emoji=include_emoji,
             )
         click.echo(content, nl=False)
     else:
@@ -1150,10 +1182,12 @@ def _entry_to_dict(
                 prs_list.append(int(str(pr_single).strip()))
             except (TypeError, ValueError):
                 pass
+    entry_type = metadata.get("type", DEFAULT_ENTRY_TYPE)
+    title = metadata.get("title", "Untitled")
     data = {
         "id": entry.entry_id,
-        "title": metadata.get("title", "Untitled"),
-        "type": metadata.get("type", "change"),
+        "title": title,
+        "type": entry_type,
         "created": entry.created_at.isoformat() if entry.created_at else None,
         "project": entry.project or config.id,
         "pr": prs_list[0] if prs_list else None,
@@ -1317,7 +1351,12 @@ def add(
     console.print(f"[green]Entry created:[/green] {path.relative_to(project_root)}")
 
 
-def _render_release_notes(entries: list[Entry], config: Config) -> str:
+def _render_release_notes(
+    entries: list[Entry],
+    config: Config,
+    *,
+    include_emoji: bool = True,
+) -> str:
     """Render Markdown sections for the provided entries."""
 
     if not entries:
@@ -1333,7 +1372,7 @@ def _render_release_notes(entries: list[Entry], config: Config) -> str:
         type_entries = entries_by_type.get(type_key) or []
         if not type_entries:
             continue
-        section_title = TYPE_SECTION_TITLES.get(type_key, type_key.title())
+        section_title = _format_section_title(type_key, include_emoji)
         lines.append(f"## {section_title}")
         lines.append("")
         for entry in type_entries:
@@ -1352,7 +1391,12 @@ def _render_release_notes(entries: list[Entry], config: Config) -> str:
     return "\n".join(lines).strip()
 
 
-def _render_release_notes_compact(entries: list[Entry], config: Config) -> str:
+def _render_release_notes_compact(
+    entries: list[Entry],
+    config: Config,
+    *,
+    include_emoji: bool = True,
+) -> str:
     """Render compact Markdown bullet list for the provided entries."""
 
     if not entries:
@@ -1368,7 +1412,7 @@ def _render_release_notes_compact(entries: list[Entry], config: Config) -> str:
         type_entries = entries_by_type.get(type_key) or []
         if not type_entries:
             continue
-        section_title = TYPE_SECTION_TITLES.get(type_key, type_key.title())
+        section_title = _format_section_title(type_key, include_emoji)
         lines.append(f"## {section_title}")
         lines.append("")
         for entry in type_entries:
@@ -1523,6 +1567,8 @@ def _export_markdown_release(
     entries: list[Entry],
     config: Config,
     release_index: dict[str, list[str]],
+    *,
+    include_emoji: bool = True,
 ) -> str:
     lines: list[str] = []
     if manifest:
@@ -1546,7 +1592,7 @@ def _export_markdown_release(
         type_entries = entries_by_type.get(type_key) or []
         if not type_entries:
             continue
-        section_title = TYPE_SECTION_TITLES.get(type_key, type_key.title())
+        section_title = _format_section_title(type_key, include_emoji)
         lines.append(f"## {section_title}")
         lines.append("")
         for entry in type_entries:
@@ -1571,6 +1617,8 @@ def _export_markdown_compact(
     entries: list[Entry],
     config: Config,
     release_index: dict[str, list[str]],
+    *,
+    include_emoji: bool = True,
 ) -> str:
     lines: list[str] = []
     if manifest:
@@ -1594,11 +1642,12 @@ def _export_markdown_compact(
         type_entries = entries_by_type.get(type_key) or []
         if not type_entries:
             continue
-        section_title = TYPE_SECTION_TITLES.get(type_key, type_key.title())
+        section_title = _format_section_title(type_key, include_emoji)
         lines.append(f"## {section_title}")
         lines.append("")
         for entry in type_entries:
-            title = entry.metadata.get("title", "Untitled")
+            metadata = entry.metadata
+            title = metadata.get("title", "Untitled")
             excerpt = extract_excerpt(entry.body)
             bullet = f"- **{title}**"
             if excerpt:
