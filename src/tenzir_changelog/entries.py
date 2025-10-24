@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 import yaml
+from click import ClickException
 
 from .utils import coerce_date, slugify
 
@@ -113,7 +114,10 @@ def iter_entries(project_root: Path) -> Iterable[Entry]:
     if not directory.exists():
         return
     for path in sorted(directory.glob("*.md")):
-        yield read_entry(path)
+        try:
+            yield read_entry(path)
+        except ValueError as exc:
+            raise ClickException(f"Failed to read entry '{path.name}': {exc}") from exc
 
 
 def _entry_sort_key(entry: Entry) -> tuple[int, str]:

@@ -20,12 +20,12 @@ export_style: compact
 Then run:
 
 ```sh
-tenzir-changelog --root changelog release create vX.Y.Z --yes
+tenzir-changelog --root changelog release vX.Y.Z --yes
 ```
 
 The compact notes render automatically without passing the `--compact` flag. The
 same default applies when exporting release notes:
 
 ```sh
-tenzir-changelog --root changelog get --format markdown --release vX.Y.Z
+tenzir-changelog --root changelog show -m vX.Y.Z
 ```
