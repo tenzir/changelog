@@ -2,15 +2,30 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
+import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
-from rich.console import Console
+from rich.console import Console, RenderableType
 from rich.style import Style
 from rich.theme import Theme
+
+CHECKMARK = "\033[92;1m✔\033[0m"
+CROSS = "\033[31m✘\033[0m"
+INFO = "\033[94;1mi\033[0m"
+DEBUG_PREFIX = "\033[95m◆\033[0m"
+
+CHECKMARK_PREFIX = f"{CHECKMARK} "
+CROSS_PREFIX = f"{CROSS} "
+INFO_PREFIX = f"{INFO} "
+DEBUG_PREFIX_WITH_SPACE = f"{DEBUG_PREFIX} "
+
+_LOGGER_NAME = "tenzir_changelog"
+_LOGGER = logging.getLogger(_LOGGER_NAME)
 
 console = Console(
     theme=Theme(
@@ -20,6 +35,74 @@ console = Console(
         }
     )
 )
+
+
+def configure_logging(debug: bool = False) -> logging.Logger:
+    """Configure the shared logger used across the CLI."""
+    level = logging.DEBUG if debug else logging.INFO
+    _LOGGER.setLevel(level)
+    while _LOGGER.handlers:
+        handler = _LOGGER.handlers.pop()
+        handler.close()
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    handler.setLevel(level)
+    _LOGGER.addHandler(handler)
+    _LOGGER.propagate = False
+    return _LOGGER
+
+
+def _log(prefix: str, message: str, level: int) -> None:
+    logger = logging.getLogger(_LOGGER_NAME)
+    lines = message.splitlines() or [""]
+    for line in lines:
+        if line:
+            logger.log(level, f"{prefix}{line}")
+        else:
+            logger.log(level, prefix.rstrip())
+
+
+def log_info(message: str) -> None:
+    """Log an informational message with the standardized prefix."""
+    _log(INFO_PREFIX, message, logging.INFO)
+
+
+def log_success(message: str) -> None:
+    """Log a success message with the standardized prefix."""
+    _log(CHECKMARK_PREFIX, message, logging.INFO)
+
+
+def log_error(message: str) -> None:
+    """Log an error message with the standardized prefix."""
+    _log(CROSS_PREFIX, message, logging.ERROR)
+
+
+def log_debug(message: str) -> None:
+    """Log a debug message with the standardized prefix."""
+    _log(DEBUG_PREFIX_WITH_SPACE, message, logging.DEBUG)
+
+
+def render_to_text(renderable: RenderableType) -> str:
+    """Return the string representation of a Rich renderable."""
+    with console.capture() as capture:
+        console.print(renderable)
+    return capture.get()
+
+
+def emit_output(content: str, *, newline: bool = True) -> None:
+    """Emit raw command output through the shared logger without prefixes."""
+    logger = logging.getLogger(_LOGGER_NAME)
+    handler_terminators: list[tuple[logging.Handler, str]] = []
+    if not newline:
+        for handler in logger.handlers:
+            if hasattr(handler, "terminator"):
+                handler_terminators.append((handler, getattr(handler, "terminator")))
+                setattr(handler, "terminator", "")
+    try:
+        logger.log(logging.INFO, content)
+    finally:
+        for handler, terminator in handler_terminators:
+            setattr(handler, "terminator", terminator)
 
 
 def coerce_date(value: object) -> Optional[date]:

@@ -155,7 +155,9 @@ def test_add_initializes_and_release(tmp_path: Path) -> None:
         ],
     )
     assert release_preview.exit_code == 1
-    assert "Re-run with --yes" in click.utils.strip_ansi(release_preview.output)
+    assert "re-run with --yes to apply these updates." in click.utils.strip_ansi(
+        release_preview.output
+    )
 
     release_result = runner.invoke(
         cli,
@@ -1209,7 +1211,9 @@ def test_release_publish_uses_gh(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     assert commands[0][:3] == ["/usr/bin/gh", "release", "view"]
 
 
-def test_release_publish_updates_existing_release(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_release_publish_updates_existing_release(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     runner = CliRunner()
     project_dir = tmp_path / "project"
     project_dir.mkdir()

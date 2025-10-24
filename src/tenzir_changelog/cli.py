@@ -19,6 +19,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.markdown import Markdown
+from rich.rule import Rule
 
 from packaging.version import InvalidVersion, Version
 
@@ -51,9 +52,21 @@ from .releases import (
     write_release_manifest,
 )
 from .validate import run_validation
-from .utils import console, extract_excerpt, slugify
+from .utils import (
+    INFO_PREFIX,
+    configure_logging,
+    console,
+    extract_excerpt,
+    log_debug,
+    log_error,
+    log_info,
+    log_success,
+    slugify,
+    emit_output,
+)
 
-INFO_PREFIX = "\033[94;1mi\033[0m "
+__all__ = ["cli", "INFO_PREFIX"]
+
 ENTRY_TYPE_STYLES = {
     "breaking": "bold red",
     "feature": "green",
@@ -66,6 +79,11 @@ ENTRY_TYPE_EMOJIS = {
     "bugfix": "🐞",
     "change": "🔧",
 }
+
+
+def _print_renderable(renderable: RenderableType) -> None:
+    """Emit a Rich renderable to the console without logging prefixes."""
+    console.print(renderable)
 
 
 def _format_section_title(entry_type: str, include_emoji: bool) -> str:
@@ -345,13 +363,8 @@ class CLIContext:
             self.project_root = project_root
             if not config_path.exists():
                 if not create_if_missing:
-                    message = "\n".join(
-                        [
-                            f"{INFO_PREFIX}no tenzir-changelog project detected at {project_root}.",
-                            f"{INFO_PREFIX}run 'tenzir-changelog add' from your project root or provide --root.",
-                        ]
-                    )
-                    click.echo(message, err=True)
+                    log_info(f"no tenzir-changelog project detected at {project_root}.")
+                    log_info("run 'tenzir-changelog add' from your project root or provide --root.")
                     raise click.exceptions.Exit(1)
                 config = _initialize_project_scaffold(
                     project_root=project_root,
@@ -385,7 +398,7 @@ def _initialize_project_scaffold(*, project_root: Path, config_path: Path) -> Co
     save_config(config, config_path)
     entry_directory(project_root).mkdir(parents=True, exist_ok=True)
     release_directory(project_root).mkdir(parents=True, exist_ok=True)
-    console.print(f"[green]Initialized changelog project[/green] at {project_root}")
+    log_success(f"initialized changelog project at {project_root}")
     return config
 
 
@@ -439,11 +452,20 @@ def _mask_comment_block(text: str) -> str:
     type=click.Path(path_type=Path, dir_okay=False),
     help="Path to an explicit changelog config YAML file.",
 )
+@click.option(
+    "--debug",
+    "-d",
+    is_flag=True,
+    help="Enable debug logging.",
+)
 @click.pass_context
-def cli(ctx: click.Context, root: Path, config: Optional[Path]) -> None:
+def cli(ctx: click.Context, root: Path, config: Optional[Path], debug: bool) -> None:
     """Manage changelog entries and release manifests."""
+    configure_logging(debug)
     root = _resolve_project_root(root)
     config_path = config.resolve() if config else default_config_path(root)
+    log_debug(f"resolved project root: {root}")
+    log_debug(f"using config path: {config_path}")
     ctx.obj = CLIContext(project_root=root, config_path=config_path)
 
     if ctx.invoked_subcommand is None:
@@ -534,7 +556,7 @@ def _render_project_header(config: Config) -> None:
         ("\nTypes: ", "bold"),
         legend or "—",
     )
-    console.print(Panel.fit(header, title="Project"))
+    _print_renderable(Panel.fit(header, title="Project"))
 
 
 def _render_entries(
@@ -691,9 +713,9 @@ def _render_entries(
         has_rows = True
 
     if has_rows:
-        console.print(table)
+        _print_renderable(table)
     else:
-        console.print("[yellow]No entries found.[/yellow]")
+        log_info("no entries found.")
 
 
 def _render_release(
@@ -702,7 +724,7 @@ def _render_release(
     *,
     project_id: str,
 ) -> None:
-    console.rule(f"Release {manifest.version}")
+    _print_renderable(Rule(f"Release {manifest.version}"))
     header = Text.assemble(
         ("Title: ", "bold"),
         manifest.title or manifest.version or "—",
@@ -713,10 +735,10 @@ def _render_release(
         ("\nProject: ", "bold"),
         project_id or "—",
     )
-    console.print(header)
+    _print_renderable(header)
 
     if manifest.intro:
-        console.print(
+        _print_renderable(
             Panel(
                 manifest.intro,
                 title="Introduction",
@@ -744,7 +766,7 @@ def _render_release(
             )
         else:
             table.add_row(str(index), entry_id, "[red]Missing entry[/red]", "—")
-    console.print(table)
+    _print_renderable(table)
 
 
 def _render_single_entry(
@@ -811,9 +833,7 @@ def _render_single_entry(
     )
 
     # Display everything in a single panel with the title
-    console.print()
-    console.print(Panel(content, title=title, title_align="left", expand=True))
-    console.print()
+    _print_renderable(Panel(content, title=title, title_align="left", expand=True))
 
 
 def _show_entries_table(
@@ -1154,7 +1174,7 @@ def _show_entries_export(
                 include_emoji=include_emoji,
                 fallback_heading=fallback_heading,
             )
-        click.echo(content, nl=False)
+        emit_output(content, newline=False)
     else:
         payload = _export_json_payload(
             manifest_for_export,
@@ -1165,7 +1185,7 @@ def _show_entries_export(
             fallback_heading=fallback_heading,
             fallback_created=fallback_created,
         )
-        click.echo(json.dumps(payload, indent=2))
+        emit_output(json.dumps(payload, indent=2))
 
 
 @cli.command("show")
@@ -1514,7 +1534,7 @@ def add(
         metadata["prs"] = pr_numbers
 
     path = write_entry(project_root, metadata, body, default_project=config.id)
-    console.print(f"[green]Entry created:[/green] {path.relative_to(project_root)}")
+    log_success(f"entry created: {path.relative_to(project_root)}")
 
 
 def _render_release_notes(
@@ -1836,7 +1856,7 @@ def release_create_cmd(
             entry.metadata.get("type", "change"),
             f"[{status_style}]{status}[/{status_style}]",
         )
-    console.print(table)
+    _print_renderable(table)
 
     title_source = click_ctx.get_parameter_source("title")
 
@@ -1944,14 +1964,14 @@ def release_create_cmd(
         change_reasons.append("refresh release notes")
 
     if not changes_required:
-        console.print(f"[green]Release '{version}' is already up to date.[/green]")
+        log_success(f"release '{version}' is already up to date.")
         return
 
     if not assume_yes:
-        console.print(f"[yellow]Detected changes for release '{version}':[/yellow]")
+        log_info(f"detected changes for release '{version}':")
         for reason in change_reasons:
-            console.print(f"  • {reason}")
-        console.print("[yellow]Re-run with --yes to apply these updates.[/yellow]")
+            log_info(f"change: {reason}")
+        log_info("re-run with --yes to apply these updates.")
         raise SystemExit(1)
 
     release_dir.mkdir(parents=True, exist_ok=True)
@@ -1976,16 +1996,12 @@ def release_create_cmd(
         overwrite=manifest_exists,
     )
 
-    console.print(
-        f"[green]Release manifest written:[/green] {manifest_path_result.relative_to(project_root)}"
-    )
+    log_success(f"release manifest written: {manifest_path_result.relative_to(project_root)}")
     if new_entries:
         relative_release_dir = release_entries_dir.relative_to(project_root)
-        console.print(
-            f"[green]Appended {len(new_entries)} entries to:[/green] {relative_release_dir}"
-        )
+        log_success(f"appended {len(new_entries)} entries to: {relative_release_dir}")
     else:
-        console.print(f"[green]Updated release metadata for {version}.[/green]")
+        log_success(f"updated release metadata for {version}.")
 
 
 @release_group.command("notes")
@@ -2068,7 +2084,7 @@ def release_notes_cmd(
             fallback_heading=fallback_heading,
             fallback_created=fallback_created,
         )
-        click.echo(json.dumps(payload, indent=2))
+        emit_output(json.dumps(payload, indent=2))
         return
 
     if resolution.kind == "release":
@@ -2105,7 +2121,7 @@ def release_notes_cmd(
         )
         output = release_body.rstrip("\n")
 
-    click.echo(output)
+    emit_output(output)
 
 
 @release_group.command("publish")
@@ -2202,8 +2218,9 @@ def release_publish_cmd(
             f"Publish {manifest.version} to GitHub repository {config.repository}? "
             f"This will run '{confirmation_action}'."
         )
+        log_info(prompt.lower())
         if not click.confirm(prompt, default=True):
-            console.print("[yellow]Aborted release publish.[/yellow]")
+            log_info("aborted release publish.")
             return
 
     try:
@@ -2213,9 +2230,7 @@ def release_publish_cmd(
             f"'gh' exited with status {exc.returncode}. See output for details."
         ) from exc
 
-    console.print(
-        f"[green]Published {manifest.version} to GitHub repository {config.repository}.[/green]"
-    )
+    log_success(f"published {manifest.version} to GitHub repository {config.repository}.")
 
 
 @cli.command("validate")
@@ -2225,11 +2240,12 @@ def validate_cmd(ctx: CLIContext) -> None:
     config = ctx.ensure_config()
     issues = run_validation(ctx.project_root, config)
     if not issues:
-        console.print("[green]All changelog files look good![/green]")
+        log_success("all changelog files look good")
         return
 
     for issue in issues:
-        console.print(f"[red]{issue.severity.upper()}[/red] {issue.path}: {issue.message}")
+        severity_label = issue.severity.lower()
+        log_error(f"{severity_label} issue at {issue.path}: {issue.message}")
     raise SystemExit(1)
 
 
