@@ -1588,7 +1588,7 @@ def _render_release_notes_compact(
             author_text, pr_text = _collect_author_pr_text(entry, config)
             suffix_parts: list[str] = []
             if author_text:
-                suffix_parts.append(f"By {author_text}")
+                suffix_parts.append(f"by {author_text}")
             if pr_text:
                 suffix_parts.append(f"in {pr_text}")
             if suffix_parts:
@@ -2295,7 +2295,7 @@ def _export_markdown_compact(
             author_text, pr_text = _collect_author_pr_text(entry, config)
             suffix_parts: list[str] = []
             if author_text:
-                suffix_parts.append(f"By {author_text}")
+                suffix_parts.append(f"by {author_text}")
             if pr_text:
                 suffix_parts.append(f"in {pr_text}")
             if suffix_parts:
