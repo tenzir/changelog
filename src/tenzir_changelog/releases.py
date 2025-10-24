@@ -20,8 +20,6 @@ def _represent_date(dumper: yaml.SafeDumper, data: date) -> Node:
 yaml.SafeDumper.add_representer(date, _represent_date)
 
 NOTES_FILENAME = "notes.md"
-
-
 RELEASE_DIR = Path("releases")
 
 
@@ -70,6 +68,7 @@ def iter_release_manifests(project_root: Path) -> Iterable[ReleaseManifest]:
         if not title_value:
             title_value = str(version_value)
 
+        entry_values = data.get("entries")
         manifest = ReleaseManifest(
             version=str(version_value),
             created=created_value,
@@ -78,9 +77,12 @@ def iter_release_manifests(project_root: Path) -> Iterable[ReleaseManifest]:
             intro=raw_intro or None,
             path=path,
         )
-        entries_dir = path.parent / "entries"
-        entry_files = sorted(entries_dir.glob("*.md"))
-        manifest.entries = [entry_file.stem for entry_file in entry_files]
+        if isinstance(entry_values, list) and entry_values:
+            manifest.entries = [str(entry_id) for entry_id in entry_values]
+        else:
+            entries_dir = path.parent / "entries"
+            entry_files = sorted(entries_dir.glob("*.md"))
+            manifest.entries = [entry_file.stem for entry_file in entry_files]
         yield manifest
 
 
@@ -97,36 +99,44 @@ def unused_entries(entries: Iterable[Entry], used_ids: set[str]) -> list[Entry]:
     return [entry for entry in entries if entry.entry_id not in used_ids]
 
 
+def serialize_release_manifest(manifest: ReleaseManifest) -> str:
+    """Return the YAML payload for a release manifest."""
+    payload: dict[str, object] = {
+        "created": manifest.created,
+    }
+    if manifest.title:
+        payload["title"] = manifest.title
+    if manifest.description:
+        payload["description"] = manifest.description
+    if manifest.intro:
+        payload["intro"] = manifest.intro
+    return yaml.safe_dump(payload, sort_keys=False)
+
+
 def write_release_manifest(
     project_root: Path,
     manifest: ReleaseManifest,
     readme_content: str,
+    *,
+    overwrite: bool = False,
 ) -> Path:
     """Serialize and store a release manifest alongside release notes."""
     directory = release_directory(project_root)
     directory.mkdir(parents=True, exist_ok=True)
     release_dir = directory / manifest.version
-    if release_dir.exists():
-        raise FileExistsError(f"Release directory {release_dir} already exists")
-    release_dir.mkdir(parents=True, exist_ok=False)
-
+    if not release_dir.exists():
+        release_dir.mkdir(parents=True, exist_ok=False)
     manifest_path = release_dir / "manifest.yaml"
-    if manifest_path.exists():
+    if manifest_path.exists() and not overwrite:
         raise FileExistsError(f"Release manifest {manifest_path} already exists")
-    payload: dict[str, object] = {
-        "created": manifest.created,
-    }
-    if manifest.intro:
-        payload["intro"] = manifest.intro
-    manifest_payload = yaml.safe_dump(payload, sort_keys=False)
+
+    manifest_payload = serialize_release_manifest(manifest)
     manifest_path.write_text(manifest_payload, encoding="utf-8")
 
     notes_path = release_dir / NOTES_FILENAME
     normalized_notes = readme_content.strip()
-    if normalized_notes:
-        notes_path.write_text(normalized_notes + "\n", encoding="utf-8")
-    else:
-        notes_path.write_text("", encoding="utf-8")
+    notes_payload = normalized_notes + "\n" if normalized_notes else ""
+    notes_path.write_text(notes_payload, encoding="utf-8")
 
     manifest.path = manifest_path
     return manifest_path

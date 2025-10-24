@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import sys
 import textwrap
 from dataclasses import dataclass, replace
@@ -17,6 +19,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.markdown import Markdown
+
+from packaging.version import InvalidVersion, Version
 
 from .config import (
     Config,
@@ -35,11 +39,13 @@ from .entries import (
 )
 from .releases import (
     ReleaseManifest,
+    NOTES_FILENAME,
     build_entry_release_index,
     collect_release_entries,
     iter_release_manifests,
     load_release_entry,
     release_directory,
+    serialize_release_manifest,
     unused_entries,
     used_entry_ids,
     write_release_manifest,
@@ -1593,15 +1599,116 @@ def _render_release_notes_compact(
     return "\n".join(lines).strip()
 
 
-@cli.command("release")
-@click.argument("version")
+def _compose_release_document(
+    description: Optional[str],
+    intro: Optional[str],
+    release_notes: str,
+) -> str:
+    parts: list[str] = []
+    if description:
+        desc = description.strip()
+        if desc:
+            parts.append(desc)
+    if intro:
+        intro_text = intro.strip()
+        if intro_text:
+            parts.append(intro_text)
+    notes = release_notes.strip()
+    if notes:
+        parts.append(notes)
+    return "\n\n".join(parts).strip()
+
+
+def _release_entry_sort_key(entry: Entry) -> tuple[str, str]:
+    title_value = entry.metadata.get("title", "")
+    return (title_value.lower(), entry.entry_id)
+
+
+def _find_release_manifest(project_root: Path, version: str) -> Optional[ReleaseManifest]:
+    normalized_version = version.strip()
+    for manifest in iter_release_manifests(project_root):
+        if manifest.version == normalized_version:
+            return manifest
+    return None
+
+
+def _latest_semver(project_root: Path) -> tuple[Version, str] | None:
+    versions: list[tuple[Version, str]] = []
+    for manifest in iter_release_manifests(project_root):
+        label = manifest.version
+        prefix = ""
+        value = label
+        if label.startswith(("v", "V")):
+            prefix = label[0]
+            value = label[1:]
+        try:
+            parsed = Version(value)
+        except InvalidVersion:
+            continue
+        versions.append((parsed, prefix))
+    if not versions:
+        return None
+    versions.sort(key=lambda item: item[0])
+    return versions[-1]
+
+
+def _bump_version_value(base: Version, bump: str) -> Version:
+    major, minor, micro = (list(base.release) + [0, 0, 0])[:3]
+    if bump == "major":
+        major += 1
+        minor = 0
+        micro = 0
+    elif bump == "minor":
+        minor += 1
+        micro = 0
+    else:
+        micro += 1
+    return Version(f"{major}.{minor}.{micro}")
+
+
+def _resolve_release_version(
+    project_root: Path,
+    explicit: Optional[str],
+    bump: Optional[str],
+) -> str:
+    if explicit and bump:
+        raise click.ClickException("Provide either a version argument or a bump flag, not both.")
+    if explicit:
+        value = explicit.strip()
+        if not value:
+            raise click.ClickException("Release version cannot be empty.")
+        return value
+    if not bump:
+        raise click.ClickException(
+            "Provide a version argument or specify one of --patch/--minor/--major."
+        )
+    latest = _latest_semver(project_root)
+    if latest is None:
+        raise click.ClickException(
+            "No existing release found to bump from. Supply an explicit version instead."
+        )
+    base_version, prefix = latest
+    next_version = _bump_version_value(base_version, bump)
+    prefix_value = prefix or ""
+    return f"{prefix_value}{next_version}"
+
+
+@cli.group("release")
+@click.pass_obj
+def release_group(ctx: CLIContext) -> None:
+    """Manage release manifests, notes, and publishing."""
+    ctx.ensure_config()
+
+
+@release_group.command("create")
+@click.argument("version", required=False)
 @click.option("--title", help="Display title for the release.")
-@click.option("--description", default="", help="Short release description.")
+@click.option("--description", help="Short release description.")
 @click.option(
     "--date",
     "release_date",
     type=click.DateTime(formats=["%Y-%m-%d"]),
-    help="Release date (YYYY-MM-DD). Defaults to today.",
+    help="Release date (YYYY-MM-DD). Defaults to today or existing release date.",
 )
 @click.option(
     "--intro-file",
@@ -1610,107 +1717,472 @@ def _render_release_notes_compact(
 )
 @click.option(
     "--compact/--no-compact",
-    default=False,
-    show_default=True,
+    default=None,
     help="Render release notes in the compact format.",
 )
 @click.option(
     "--yes",
     "assume_yes",
     is_flag=True,
-    help="Skip confirmation prompts and run non-interactively.",
+    help="Apply detected changes without prompting.",
+)
+@click.option(
+    "--patch",
+    "version_bump",
+    flag_value="patch",
+    default=None,
+    help="Bump the patch segment from the latest release.",
+)
+@click.option(
+    "--minor",
+    "version_bump",
+    flag_value="minor",
+    help="Bump the minor segment from the latest release.",
+)
+@click.option(
+    "--major",
+    "version_bump",
+    flag_value="major",
+    help="Bump the major segment from the latest release.",
 )
 @click.pass_obj
-def release_cmd(
+def release_create_cmd(
     ctx: CLIContext,
-    version: str,
+    version: Optional[str],
     title: Optional[str],
-    description: str,
+    description: Optional[str],
     release_date: Optional[datetime],
     intro_file: Optional[Path],
-    compact: bool,
+    compact: Optional[bool],
     assume_yes: bool,
+    version_bump: Optional[str],
 ) -> None:
-    """Create a release manifest from unused entries."""
+    """Create or update a release manifest from unused entries."""
     config = ctx.ensure_config()
     project_root = ctx.project_root
 
-    click_ctx = click.get_current_context()
-    if click_ctx.get_parameter_source("compact") == ParameterSource.DEFAULT:
-        compact = config.export_style == EXPORT_STYLE_COMPACT
+    version = _resolve_release_version(project_root, version, version_bump)
 
-    unused = _collect_unused_entries_for_release(project_root, config)
-    if not unused:
+    click_ctx = click.get_current_context()
+    existing_manifest = _find_release_manifest(project_root, version)
+    if version_bump and existing_manifest is not None:
+        raise click.ClickException(
+            f"Release '{version}' already exists. Supply a different bump flag or explicit version."
+        )
+    compact_source = click_ctx.get_parameter_source("compact")
+    if compact_source == ParameterSource.DEFAULT:
+        compact_flag = config.export_style == EXPORT_STYLE_COMPACT
+    else:
+        compact_flag = bool(compact)
+    release_dir = release_directory(project_root) / version
+    manifest_path = release_dir / "manifest.yaml"
+    notes_path = release_dir / NOTES_FILENAME
+
+    existing_entries: list[Entry] = []
+    existing_entry_ids: set[str] = set()
+    if existing_manifest:
+        for entry_id in existing_manifest.entries:
+            entry = load_release_entry(project_root, existing_manifest, entry_id)
+            if entry is None:
+                raise click.ClickException(
+                    f"Release '{version}' is missing entry file for '{entry_id}'. "
+                    "Recreate or repair the release before appending new entries."
+                )
+            existing_entries.append(entry)
+            existing_entry_ids.add(entry.entry_id)
+
+    unused_entries = _collect_unused_entries_for_release(project_root, config)
+    if not unused_entries and not existing_entries:
         raise click.ClickException("No unused entries available for release creation.")
 
-    version = version.strip()
-    title = title or f"{config.name} {version}"
-    release_dt = release_date.date() if release_date else date.today()
+    new_entries = [entry for entry in unused_entries if entry.entry_id not in existing_entry_ids]
 
-    custom_intro = ""
-    if intro_file:
-        custom_intro = intro_file.read_text(encoding="utf-8").strip()
+    combined_entries: dict[str, Entry] = {entry.entry_id: entry for entry in existing_entries}
+    for entry in new_entries:
+        combined_entries[entry.entry_id] = entry
 
-    entries_sorted = sorted(unused, key=lambda entry: entry.metadata.get("title", ""))
-    table = Table(title="Entries to Include")
+    entries_sorted = sorted(combined_entries.values(), key=_release_entry_sort_key)
+    if not entries_sorted:
+        raise click.ClickException("No entries available to include in the release.")
+
+    table = Table(title=f"Entries for {version}")
     table.add_column("ID", style="cyan")
     table.add_column("Title")
     table.add_column("Type")
+    table.add_column("Status")
+    new_entry_ids = {entry.entry_id for entry in new_entries}
     for entry in entries_sorted:
+        status = "New" if entry.entry_id in new_entry_ids else "Existing"
+        status_style = "green" if status == "New" else "dim"
         table.add_row(
             entry.entry_id,
             entry.metadata.get("title", "Untitled"),
             entry.metadata.get("type", "change"),
+            f"[{status_style}]{status}[/{status_style}]",
         )
     console.print(table)
 
-    if not assume_yes and not click.confirm(
-        "Create release manifest with these entries?", default=True
-    ):
-        console.print("[yellow]Aborted release creation.[/yellow]")
-        return
+    title_source = click_ctx.get_parameter_source("title")
 
-    manifest_intro = custom_intro.strip() if custom_intro else ""
-    release_notes = (
-        _render_release_notes_compact(entries_sorted, config)
-        if compact
-        else _render_release_notes(entries_sorted, config)
+    release_title = (
+        title
+        if title_source != ParameterSource.DEFAULT
+        else existing_manifest.title
+        if existing_manifest
+        else f"{config.name} {version}"
     )
-    readme_parts: list[str] = []
-    if description:
-        readme_parts.append(description.strip())
-    if manifest_intro:
-        readme_parts.append(manifest_intro)
-    if release_notes:
-        readme_parts.append(release_notes)
-    readme_content = "\n\n".join(part.strip() for part in readme_parts if part and part.strip())
+    description_value = (
+        description.strip()
+        if description is not None
+        else (existing_manifest.description if existing_manifest else "")
+    )
+
+    manifest_intro: Optional[str]
+    if intro_file:
+        manifest_intro = intro_file.read_text(encoding="utf-8").strip()
+    elif existing_manifest:
+        manifest_intro = existing_manifest.intro
+    else:
+        manifest_intro = None
+
+    release_dt = (
+        release_date.date()
+        if release_date is not None
+        else existing_manifest.created
+        if existing_manifest
+        else date.today()
+    )
+
+    release_notes_standard = _render_release_notes(entries_sorted, config, include_emoji=True)
+    release_notes_compact = _render_release_notes_compact(
+        entries_sorted, config, include_emoji=True
+    )
+
+    if compact_source == ParameterSource.DEFAULT:
+        prefer_compact = config.export_style == EXPORT_STYLE_COMPACT
+        existing_notes_payload = (
+            notes_path.read_text(encoding="utf-8") if notes_path.exists() else None
+        )
+        if existing_notes_payload is not None:
+            normalized_existing = existing_notes_payload.rstrip("\n")
+            doc_standard = _compose_release_document(
+                description_value if description_value else None,
+                manifest_intro,
+                release_notes_standard,
+            ).rstrip("\n")
+            doc_compact = _compose_release_document(
+                description_value if description_value else None,
+                manifest_intro,
+                release_notes_compact,
+            ).rstrip("\n")
+            if normalized_existing == doc_compact:
+                prefer_compact = True
+            elif normalized_existing == doc_standard:
+                prefer_compact = False
+        compact_flag = prefer_compact
+    else:
+        compact_flag = bool(compact)
+        existing_notes_payload = (
+            notes_path.read_text(encoding="utf-8") if notes_path.exists() else None
+        )
+
+    release_notes = release_notes_compact if compact_flag else release_notes_standard
 
     manifest = ReleaseManifest(
         version=version,
         created=release_dt,
         entries=[entry.entry_id for entry in entries_sorted],
-        title=title or "",
-        description=description,
+        title=release_title or "",
+        description=description_value or "",
         intro=manifest_intro or None,
     )
 
-    path = write_release_manifest(project_root, manifest, readme_content)
+    readme_content = _compose_release_document(
+        manifest.description,
+        manifest.intro,
+        release_notes,
+    )
 
-    release_dir = path.parent
+    manifest_payload = serialize_release_manifest(manifest)
+    manifest_exists = manifest_path.exists()
+    existing_manifest_payload = (
+        manifest_path.read_text(encoding="utf-8") if manifest_exists else None
+    )
+
+    def _normalize_block(value: Optional[str]) -> str:
+        return (value or "").rstrip("\n")
+
+    changes_required = False
+    change_reasons: list[str] = []
+    if not release_dir.exists():
+        changes_required = True
+        change_reasons.append("create release directory")
+    if new_entries:
+        changes_required = True
+        change_reasons.append(f"append {len(new_entries)} new entries")
+    if _normalize_block(manifest_payload) != _normalize_block(existing_manifest_payload):
+        changes_required = True
+        change_reasons.append("update manifest metadata")
+    if _normalize_block(readme_content) != _normalize_block(existing_notes_payload):
+        changes_required = True
+        change_reasons.append("refresh release notes")
+
+    if not changes_required:
+        console.print(f"[green]Release '{version}' is already up to date.[/green]")
+        return
+
+    if not assume_yes:
+        console.print(f"[yellow]Detected changes for release '{version}':[/yellow]")
+        for reason in change_reasons:
+            console.print(f"  • {reason}")
+        console.print("[yellow]Re-run with --yes to apply these updates.[/yellow]")
+        raise SystemExit(1)
+
+    release_dir.mkdir(parents=True, exist_ok=True)
     release_entries_dir = release_dir / "entries"
     release_entries_dir.mkdir(parents=True, exist_ok=True)
-    for entry in entries_sorted:
+
+    for entry in new_entries:
         source_path = entry.path
         destination_path = release_entries_dir / source_path.name
-        if destination_path.exists():
+        if not source_path.exists():
             raise click.ClickException(
-                f"Cannot move entry '{entry.entry_id}' because {destination_path} already exists."
+                f"Cannot move entry '{entry.entry_id}' because {source_path} is missing."
             )
+        if destination_path.exists():
+            continue
         source_path.rename(destination_path)
 
-    console.print(f"[green]Release manifest written:[/green] {path.relative_to(project_root)}")
-    relative_release_dir = release_entries_dir.relative_to(project_root)
-    console.print(f"[green]Moved {len(entries_sorted)} entries to:[/green] {relative_release_dir}")
+    manifest_path_result = write_release_manifest(
+        project_root,
+        manifest,
+        readme_content,
+        overwrite=manifest_exists,
+    )
+
+    console.print(
+        f"[green]Release manifest written:[/green] {manifest_path_result.relative_to(project_root)}"
+    )
+    if new_entries:
+        relative_release_dir = release_entries_dir.relative_to(project_root)
+        console.print(
+            f"[green]Appended {len(new_entries)} entries to:[/green] {relative_release_dir}"
+        )
+    else:
+        console.print(f"[green]Updated release metadata for {version}.[/green]")
+
+
+@release_group.command("notes")
+@click.argument("identifier")
+@click.option(
+    "-m",
+    "format_choice",
+    flag_value="markdown",
+    default="markdown",
+    help="Render notes as Markdown (default).",
+)
+@click.option(
+    "-j",
+    "format_choice",
+    flag_value="json",
+    help="Render notes as JSON.",
+)
+@click.option(
+    "--compact/--no-compact",
+    default=None,
+    help="Use the compact layout when rendering Markdown.",
+)
+@click.option(
+    "--no-emoji",
+    is_flag=True,
+    help="Disable type emoji in Markdown output.",
+)
+@click.pass_obj
+def release_notes_cmd(
+    ctx: CLIContext,
+    identifier: str,
+    format_choice: str,
+    compact: Optional[bool],
+    no_emoji: bool,
+) -> None:
+    """Display release notes for a release or the unreleased bucket."""
+    config = ctx.ensure_config()
+    project_root = ctx.project_root
+
+    if not identifier.strip():
+        raise click.ClickException("Provide a release version or '-' for unreleased notes.")
+
+    entry_map, _, _, sorted_entries = _gather_entry_context(project_root)
+    resolutions = _resolve_identifiers_sequence(
+        [identifier],
+        project_root=project_root,
+        config=config,
+        sorted_entries=sorted_entries,
+        entry_map=entry_map,
+        allowed_kinds={"release", "unreleased"},
+    )
+    resolution = resolutions[0]
+    manifest = resolution.manifest if resolution.kind == "release" else None
+
+    include_emoji = not no_emoji
+    click_ctx = click.get_current_context()
+    compact_source = click_ctx.get_parameter_source("compact")
+    compact_flag = (
+        config.export_style == EXPORT_STYLE_COMPACT
+        if compact_source == ParameterSource.DEFAULT
+        else bool(compact)
+    )
+    view = format_choice or "markdown"
+
+    entries_for_output = sorted(resolution.entries, key=_release_entry_sort_key)
+    release_index_export = build_entry_release_index(project_root, project=config.id)
+
+    if resolution.kind == "release" and manifest is None:
+        raise click.ClickException(f"Release '{identifier}' not found.")
+
+    if view == "json":
+        fallback_heading = manifest.title if manifest and manifest.title else resolution.identifier
+        fallback_created = manifest.created if manifest else None
+        payload = _export_json_payload(
+            manifest,
+            entries_for_output,
+            config,
+            release_index_export,
+            compact=compact_flag,
+            fallback_heading=fallback_heading,
+            fallback_created=fallback_created,
+        )
+        click.echo(json.dumps(payload, indent=2))
+        return
+
+    if resolution.kind == "release":
+        release_body = (
+            _render_release_notes_compact(entries_for_output, config, include_emoji=include_emoji)
+            if compact_flag
+            else _render_release_notes(entries_for_output, config, include_emoji=include_emoji)
+        )
+        output = _compose_release_document(
+            manifest.description if manifest else "",
+            manifest.intro if manifest else None,
+            release_body,
+        )
+    else:
+        fallback_heading = "Unreleased Changes"
+        release_body = (
+            _export_markdown_compact(
+                None,
+                entries_for_output,
+                config,
+                release_index_export,
+                include_emoji=include_emoji,
+                fallback_heading=fallback_heading,
+            )
+            if compact_flag
+            else _export_markdown_release(
+                None,
+                entries_for_output,
+                config,
+                release_index_export,
+                include_emoji=include_emoji,
+                fallback_heading=fallback_heading,
+            )
+        )
+        output = release_body.rstrip("\n")
+
+    click.echo(output)
+
+
+@release_group.command("publish")
+@click.argument("version")
+@click.option(
+    "--draft/--no-draft",
+    default=False,
+    help="Create the GitHub release as a draft.",
+)
+@click.option(
+    "--prerelease/--no-prerelease",
+    default=False,
+    help="Mark the GitHub release as a prerelease.",
+)
+@click.option(
+    "--yes",
+    "assume_yes",
+    is_flag=True,
+    help="Publish without confirmation prompts.",
+)
+@click.pass_obj
+def release_publish_cmd(
+    ctx: CLIContext,
+    version: str,
+    draft: bool,
+    prerelease: bool,
+    assume_yes: bool,
+) -> None:
+    """Publish a release to GitHub using the gh CLI."""
+    config = ctx.ensure_config()
+    project_root = ctx.project_root
+
+    if not config.repository:
+        raise click.ClickException(
+            "Set the 'repository' field in config.yaml before publishing releases."
+        )
+
+    gh_path = shutil.which("gh")
+    if gh_path is None:
+        raise click.ClickException("The 'gh' CLI is required but was not found in PATH.")
+
+    manifest = _find_release_manifest(project_root, version)
+    if manifest is None:
+        raise click.ClickException(f"Release '{version}' not found.")
+
+    release_dir = release_directory(project_root) / manifest.version
+    notes_path = release_dir / NOTES_FILENAME
+    if not notes_path.exists():
+        relative_notes = notes_path.relative_to(project_root)
+        raise click.ClickException(
+            f"Release notes missing at {relative_notes}. Run 'tenzir-changelog release create {manifest.version} --yes' first."
+        )
+
+    notes_content = notes_path.read_text(encoding="utf-8").strip()
+    if not notes_content:
+        raise click.ClickException("Release notes are empty; aborting publish.")
+
+    command = [
+        gh_path,
+        "release",
+        "create",
+        manifest.version,
+        "--repo",
+        config.repository,
+        "--notes-file",
+        str(notes_path),
+    ]
+    if manifest.title:
+        command.extend(["--title", manifest.title])
+    if draft:
+        command.append("--draft")
+    if prerelease:
+        command.append("--prerelease")
+
+    if not assume_yes:
+        prompt = (
+            f"Publish {manifest.version} to GitHub repository {config.repository}? "
+            "This will run 'gh release create'."
+        )
+        if not click.confirm(prompt, default=True):
+            console.print("[yellow]Aborted release publish.[/yellow]")
+            return
+
+    try:
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise click.ClickException(
+            f"'gh' exited with status {exc.returncode}. See output for details."
+        ) from exc
+
+    console.print(
+        f"[green]Published {manifest.version} to GitHub repository {config.repository}.[/green]"
+    )
 
 
 @cli.command("validate")

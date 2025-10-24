@@ -76,16 +76,29 @@ Create a new change entry in `unreleased/`. Highlights:
     99 entries exist so lexicographic order matches the changelog chronology even
     after edits
 
-- **`tenzir-changelog release <version>`**
-  Assemble a release under `releases/` by moving every unused entry file into
-  `releases/<version>/entries/` and writing release metadata to
-  `manifest.yaml` (containing the release date and optional intro). Markdown
-  notes render in `notes.md`, while the entry directory is now the single
-  source of truth for which fragments shipped in the release. Accepts options
-  for release title, version, description, release date, and the `--compact`
-  flag to emit bullet-point notes. You can supply additional narrative via
-  `--intro-file`, and the CLI prints the manifest path plus a summary of
-  included entries.
+- **`tenzir-changelog release create [<version>|--patch|--minor|--major]`**  
+  Stage a release under `releases/<version>/` by rendering notes to `notes.md`,
+  updating `manifest.yaml`, and moving newly selected entry files into
+  `entries/`. The command is safe to re-run: it exits successfully when no
+  changes are required, and refuses to mutate anything unless invoked with
+  `--yes`. When the release already exists, the CLI appends additional
+  unreleased entries, refreshing notes and manifest metadata in-place.
+  Instead of typing a version, use `--patch`, `--minor`, or `--major` to bump
+  from the latest tagged release while preserving prefixes like `v`. Additional
+  flags include `--description`, `--intro-file`, `--compact`, and `--date` to
+  fine-tune the generated notes.
+
+- **`tenzir-changelog release notes [-m|-j] <identifier>`**  
+  Re-export release notes without touching the filesystem. Pass a concrete
+  release version (e.g., `v1.0.0`) or `-`/`unreleased` to preview the next
+  release bucket. Use `-m` (default) for Markdown, `-j` for JSON, `--compact`
+  to mirror bullet-style notes, and `--no-emoji` to drop type icons.
+
+- **`tenzir-changelog release publish <version>`**  
+  Ship a release directly to GitHub via the `gh` CLI. The command reads
+  `config.yaml` for the target repository slug, validates that `notes.md`
+  exists, and shells out to `gh release create ... --notes-file notes.md`.
+  Pass `--draft`, `--prerelease`, and `--yes` to control the publication flow.
 
 - **`tenzir-changelog validate`**
   Run structural checks across entry files, release manifests, and exported
@@ -127,11 +140,12 @@ Create a new change entry in `unreleased/`. Highlights:
   guarantee metadata completeness.
 
 - **Cutting a release:**  
-  Maintainers execute `uvx tenzir-changelog release v5.4.0`, supply the
-  introductory notes (or reference a Markdown file with richer content and
-  imagery), and review the generated manifest before handing it off to docs.
-  The command pulls the project display name from `config.yaml`, so no extra switches
-  are required.
+  Maintainers run `uvx tenzir-changelog release create v5.4.0` to preview
+  changes. When the summary looks good, they re-run the command with `--yes`
+  to move entries, refresh `notes.md`, and update `manifest.yaml`. Afterward,
+  `uvx tenzir-changelog release notes v5.4.0` re-exports the Markdown for
+  review, and `uvx tenzir-changelog release publish v5.4.0 --yes` pushes the
+  notes to GitHub once everything looks ready.
 
 ## Tutorial
 
