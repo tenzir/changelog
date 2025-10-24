@@ -62,6 +62,8 @@ from .utils import (
     log_error,
     log_info,
     log_success,
+    log_warning,
+    create_annotated_git_tag,
     slugify,
     emit_output,
 )
@@ -2138,6 +2140,12 @@ def release_notes_cmd(
     help="Mark the GitHub release as a prerelease.",
 )
 @click.option(
+    "--tag",
+    "create_tag",
+    is_flag=True,
+    help="Create an annotated git tag before publishing.",
+)
+@click.option(
     "--yes",
     "assume_yes",
     is_flag=True,
@@ -2149,6 +2157,7 @@ def release_publish_cmd(
     version: str,
     draft: bool,
     prerelease: bool,
+    create_tag: bool,
     assume_yes: bool,
 ) -> None:
     """Publish a release to GitHub using the gh CLI."""
@@ -2179,6 +2188,17 @@ def release_publish_cmd(
     notes_content = notes_path.read_text(encoding="utf-8").strip()
     if not notes_content:
         raise click.ClickException("Release notes are empty; aborting publish.")
+
+    if create_tag:
+        tag_message = f"Release {manifest.version}"
+        try:
+            created = create_annotated_git_tag(project_root, manifest.version, tag_message)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from exc
+        if created:
+            log_success(f"created git tag {manifest.version}.")
+        else:
+            log_warning(f"git tag {manifest.version} already exists; skipping creation.")
 
     release_exists = _github_release_exists(config.repository, manifest.version, gh_path)
     if release_exists:

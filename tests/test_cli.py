@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import pytest
 from datetime import date
@@ -1357,3 +1358,208 @@ def test_release_publish_handles_abort(monkeypatch: pytest.MonkeyPatch, tmp_path
 
     assert publish_result.exit_code == 0, publish_result.output
     assert "Traceback" not in publish_result.output
+
+
+def test_release_publish_creates_git_tag(tmp_path: Path) -> None:
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    # Initialize a Git repository with a single commit.
+    subprocess.run(["git", "init"], cwd=project_dir, check=True, stdout=subprocess.PIPE)
+    subprocess.run(
+        ["git", "config", "user.email", "codex@example.com"],
+        cwd=project_dir,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Codex"],
+        cwd=project_dir,
+        check=True,
+    )
+    (project_dir / "README.md").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=project_dir, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        cwd=project_dir,
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+
+    # Write minimal configuration and release artifacts.
+    config_path = project_dir / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "id": "demo",
+                "name": "Demo",
+                "repository": "tenzir/example",
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    release_dir = project_dir / "releases" / "v9.9.9"
+    release_dir.mkdir(parents=True)
+    (release_dir / "manifest.yaml").write_text(
+        "version: v9.9.9\ncreated: 2024-01-01\n",
+        encoding="utf-8",
+    )
+    (release_dir / "notes.md").write_text("Ready for launch.\n", encoding="utf-8")
+
+    # Stub the gh CLI so the publish command can run end-to-end.
+    gh_log = project_dir / "gh.log"
+    gh_stub = project_dir / "gh"
+    gh_stub.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "import os",
+                "import sys",
+                "from pathlib import Path",
+                "log = os.environ.get('GH_LOG')",
+                "if log:",
+                "    with open(log, 'a', encoding='utf-8') as handle:",
+                "        handle.write(' '.join(sys.argv[1:]) + '\\n')",
+                "if len(sys.argv) >= 3 and sys.argv[1] == 'release' and sys.argv[2] == 'view':",
+                "    sys.exit(1)",
+                "sys.exit(0)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    gh_stub.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{project_dir}{os.pathsep}{env.get('PATH', '')}"
+    env["GH_LOG"] = str(gh_log)
+
+    publish_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "publish",
+            "v9.9.9",
+            "--tag",
+            "--yes",
+        ],
+        env=env,
+    )
+
+    assert publish_result.exit_code == 0, publish_result.output
+
+    tag_result = subprocess.run(
+        ["git", "tag", "--list", "v9.9.9"],
+        cwd=project_dir,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "v9.9.9" in [line.strip() for line in tag_result.stdout.splitlines()]
+
+    gh_calls = gh_log.read_text(encoding="utf-8").strip().splitlines()
+    assert any(line.startswith("release create v9.9.9") for line in gh_calls)
+
+
+def test_release_publish_skips_existing_tag(tmp_path: Path) -> None:
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    subprocess.run(["git", "init"], cwd=project_dir, check=True, stdout=subprocess.PIPE)
+    subprocess.run(
+        ["git", "config", "user.email", "codex@example.com"],
+        cwd=project_dir,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Codex"],
+        cwd=project_dir,
+        check=True,
+    )
+    (project_dir / "README.md").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=project_dir, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        cwd=project_dir,
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+
+    config_path = project_dir / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "id": "demo",
+                "name": "Demo",
+                "repository": "tenzir/example",
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    release_dir = project_dir / "releases" / "v9.9.9"
+    release_dir.mkdir(parents=True)
+    (release_dir / "manifest.yaml").write_text(
+        "version: v9.9.9\ncreated: 2024-01-01\n",
+        encoding="utf-8",
+    )
+    (release_dir / "notes.md").write_text("Ready for launch.\n", encoding="utf-8")
+
+    subprocess.run(
+        ["git", "tag", "-a", "v9.9.9", "-m", "Existing release"],
+        cwd=project_dir,
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+
+    gh_log = project_dir / "gh.log"
+    gh_stub = project_dir / "gh"
+    gh_stub.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "import os",
+                "import sys",
+                "log = os.environ.get('GH_LOG')",
+                "if log:",
+                "    with open(log, 'a', encoding='utf-8') as handle:",
+                "        handle.write(' '.join(sys.argv[1:]) + '\\n')",
+                "if len(sys.argv) >= 3 and sys.argv[1] == 'release' and sys.argv[2] == 'view':",
+                "    sys.exit(1)",
+                "sys.exit(0)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    gh_stub.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{project_dir}{os.pathsep}{env.get('PATH', '')}"
+    env["GH_LOG"] = str(gh_log)
+
+    publish_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "publish",
+            "v9.9.9",
+            "--tag",
+            "--yes",
+        ],
+        env=env,
+    )
+
+    assert publish_result.exit_code == 0, publish_result.output
+
+    publish_plain = click.utils.strip_ansi(publish_result.output)
+    assert "git tag v9.9.9 already exists; skipping creation." in publish_plain
+
+    gh_calls = gh_log.read_text(encoding="utf-8").strip().splitlines()
+    assert any(line.startswith("release create v9.9.9") for line in gh_calls)

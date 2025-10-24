@@ -98,7 +98,10 @@ Create a new change entry in `unreleased/`. Highlights:
   Ship a release directly to GitHub via the `gh` CLI. The command reads
   `config.yaml` for the target repository slug, validates that `notes.md`
   exists, and shells out to `gh release create ... --notes-file notes.md`.
-  Pass `--draft`, `--prerelease`, and `--yes` to control the publication flow.
+  Pass `--draft`, `--prerelease`, `--tag`, and `--yes` to control the publication
+  flow. When `--tag` is present, the CLI creates an annotated `git tag -a
+  <version> -m "Release <version>"` before invoking `gh`, logging a warning and
+  leaving the repository untouched when the tag already exists.
 
 - **`tenzir-changelog validate`**
   Run structural checks across entry files, release manifests, and exported

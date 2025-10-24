@@ -122,12 +122,18 @@ Releases use trusted publishing from GitHub Actions. When ready:
    ```sh
    git commit -am "Bump version to vX.Y.Z"
    ```
-5. Tag and push:
+5. Publish the release and annotate the tag via the CLI:
    ```sh
-   git tag -a vX.Y.Z -m "Release vX.Y.Z"
-   git push && git push --tags
+   uv run tenzir-changelog --root changelog release publish vX.Y.Z --tag --yes
    ```
-6. Draft and publish a GitHub release describing highlights.
+   Add `--draft` or `--prerelease` when you need staged releases. If the tag
+   already exists, the command keeps it and emits a warning before publishing.
+6. Push commits and tags:
+   ```sh
+   git push
+   git push --tags
+   ```
+7. Draft and publish a GitHub release describing highlights if additional context is helpful.
 
 Publishing the release triggers the automated workflow that builds, validates,
 and uploads artifacts to PyPI before smoke-testing the package.

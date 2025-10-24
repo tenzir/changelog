@@ -17,11 +17,13 @@ from rich.theme import Theme
 CHECKMARK = "\033[92;1m✔\033[0m"
 CROSS = "\033[31m✘\033[0m"
 INFO = "\033[94;1mi\033[0m"
+WARNING = "○"
 DEBUG_PREFIX = "\033[95m◆\033[0m"
 
 CHECKMARK_PREFIX = f"{CHECKMARK} "
 CROSS_PREFIX = f"{CROSS} "
 INFO_PREFIX = f"{INFO} "
+WARNING_PREFIX = f"{WARNING} "
 DEBUG_PREFIX_WITH_SPACE = f"{DEBUG_PREFIX} "
 BOLD = "\033[1m"
 RESET = "\033[0m"
@@ -77,6 +79,11 @@ def log_success(message: str) -> None:
 def log_error(message: str) -> None:
     """Log an error message with the standardized prefix."""
     _log(CROSS_PREFIX, message, logging.ERROR)
+
+
+def log_warning(message: str) -> None:
+    """Log a warning message with the standardized prefix."""
+    _log(WARNING_PREFIX, message, logging.WARNING)
 
 
 def log_debug(message: str) -> None:
@@ -179,3 +186,40 @@ def extract_excerpt(text: str) -> str:
     first_paragraph, *_ = re.split(r"\n\s*\n", stripped, maxsplit=1)
     collapsed = re.sub(r"\s*\n\s*", " ", first_paragraph.strip())
     return collapsed.strip()
+
+
+def create_annotated_git_tag(project_root: Path, tag_name: str, message: str) -> bool:
+    """Create an annotated Git tag for the provided version.
+
+    Returns True when a new tag was created, False if the tag already existed.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "tag", "--list", tag_name],
+            cwd=str(project_root),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "git is required to create release tags but was not found in PATH."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError("failed to query existing git tags.") from exc
+
+    existing_tags = {line.strip() for line in result.stdout.splitlines()}
+    if tag_name in existing_tags:
+        return False
+
+    try:
+        subprocess.run(
+            ["git", "tag", "-a", tag_name, "-m", message],
+            cwd=str(project_root),
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"git failed to create tag '{tag_name}' (exit status {exc.returncode})."
+        ) from exc
+    return True
