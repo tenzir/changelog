@@ -14,33 +14,19 @@ from tenzir_changelog.cli import INFO_PREFIX, cli
 from tenzir_changelog.entries import ENTRY_PREFIX_WIDTH, read_entry
 
 
-def test_bootstrap_add_and_release(tmp_path: Path) -> None:
+def test_add_initializes_and_release(tmp_path: Path) -> None:
     runner = CliRunner()
-    project_root = tmp_path
-
-    bootstrap_input = (
-        "\n"  # Project name (accept default)
-        "\n"  # Project description
-        "\n"  # Repository slug
-        "node\n"  # Product name
-    )
-    result = runner.invoke(
-        cli,
-        ["--root", str(project_root), "bootstrap"],
-        input=bootstrap_input,
-    )
-    assert result.exit_code == 0, result.output
-    workspace_root = project_root / "changelog"
-    config_path = workspace_root / "config.yaml"
-    assert workspace_root.exists()
-    assert config_path.exists()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    config_path = project_dir / "config.yaml"
+    assert not config_path.exists()
 
     # Add entries via CLI, relying on defaults for type/project.
     add_result = runner.invoke(
         cli,
         [
             "--root",
-            str(workspace_root),
+            str(project_dir),
             "add",
             "--title",
             "Exciting Feature",
@@ -55,12 +41,13 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         ],
     )
     assert add_result.exit_code == 0, add_result.output
+    assert config_path.exists()
 
     add_breaking = runner.invoke(
         cli,
         [
             "--root",
-            str(workspace_root),
+            str(project_dir),
             "add",
             "--title",
             "Remove legacy API",
@@ -78,7 +65,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
+            str(project_dir),
             "add",
             "--title",
             "Fix ingest crash",
@@ -96,7 +83,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     )
     assert add_bugfix.exit_code == 0, add_bugfix.output
 
-    entries_dir = workspace_root / "unreleased"
+    entries_dir = project_dir / "unreleased"
     entry_files = sorted(entries_dir.glob("*.md"))
     assert len(entry_files) == 3
 
@@ -128,14 +115,31 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert "- 102" in bugfix_text and "- 115" in bugfix_text
     assert "project:" not in bugfix_text
 
-    intro_file = project_root / "intro.md"
+    feature_entry_id = feature_entry.stem
+
+    get_feature = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "show",
+            "-c",
+            feature_entry_id,
+        ],
+    )
+    assert get_feature.exit_code == 0, get_feature.output
+    feature_plain = click.utils.strip_ansi(get_feature.output)
+    assert "Exciting Feature" in feature_plain
+    assert feature_entry_id in feature_plain
+
+    intro_file = tmp_path / "intro.md"
     intro_file.write_text("Welcome to the release!\n\n![Image](assets/hero.png)\n")
 
     release_result = runner.invoke(
         cli,
         [
             "--root",
-            str(workspace_root),
+            str(project_dir),
             "release",
             "v1.0.0",
             "--description",
@@ -147,7 +151,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         ],
     )
     assert release_result.exit_code == 0, release_result.output
-    release_dir = workspace_root / "releases" / "v1.0.0"
+    release_dir = project_dir / "releases" / "v1.0.0"
     release_path = release_dir / "notes.md"
     manifest_path = release_dir / "manifest.yaml"
     assert release_path.exists()
@@ -199,7 +203,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
 
     list_result = runner.invoke(
         cli,
-        ["--root", str(workspace_root), "list"],
+        ["--root", str(project_dir), "show"],
     )
     assert list_result.exit_code == 0, list_result.output
     plain_list = click.utils.strip_ansi(list_result.output)
@@ -210,7 +214,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
 
     list_banner = runner.invoke(
         cli,
-        ["--root", str(workspace_root), "list", "--banner"],
+        ["--root", str(project_dir), "show", "--banner"],
     )
     assert list_banner.exit_code == 0, list_banner.output
     banner_output = click.utils.strip_ansi(list_banner.output)
@@ -219,7 +223,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
 
     release_list = runner.invoke(
         cli,
-        ["--root", str(workspace_root), "list", "--release", "v1.0.0"],
+        ["--root", str(project_dir), "show", "--release", "v1.0.0"],
     )
     assert release_list.exit_code == 0, release_list.output
     release_plain = click.utils.strip_ansi(release_list.output)
@@ -232,14 +236,14 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "markdown",
+            str(project_dir),
+            "show",
+            "-m",
             "v1.0.0",
         ],
     )
     assert get_md.exit_code == 0, get_md.output
+    assert "First stable release." not in get_md.output
     assert "## 💥 Breaking changes" in get_md.output
     assert "## 🚀 Features" in get_md.output
     assert "### Remove legacy API" in get_md.output
@@ -256,15 +260,15 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "markdown",
+            str(project_dir),
+            "show",
+            "-m",
             "--no-emoji",
             "v1.0.0",
         ],
     )
     assert get_md_plain.exit_code == 0, get_md_plain.output
+    assert "First stable release." not in get_md_plain.output
     assert "## Breaking changes" in get_md_plain.output
     assert "## Features" in get_md_plain.output
     assert "### Remove legacy API" in get_md_plain.output
@@ -283,15 +287,15 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "markdown",
-            "-c",
+            str(project_dir),
+            "show",
+            "-m",
+            "--compact",
             "v1.0.0",
         ],
     )
     assert get_compact.exit_code == 0, get_compact.output
+    assert "First stable release." not in get_compact.output
     assert "## 💥 Breaking changes" in get_compact.output
     assert "## 🚀 Features" in get_compact.output
     assert (
@@ -315,16 +319,16 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "markdown",
+            str(project_dir),
+            "show",
+            "-m",
             "--no-emoji",
-            "-c",
+            "--compact",
             "v1.0.0",
         ],
     )
     assert get_compact_plain.exit_code == 0, get_compact_plain.output
+    assert "First stable release." not in get_compact_plain.output
     assert "## Breaking changes" in get_compact_plain.output
     assert "## Features" in get_compact_plain.output
     assert (
@@ -354,18 +358,17 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "json",
-            "-c",
+            str(project_dir),
+            "show",
+            "-j",
+            "--compact",
             "v1.0.0",
         ],
     )
     assert get_json.exit_code == 0, get_json.output
     payload = json.loads(get_json.output)
     assert payload["version"] == "v1.0.0"
-    assert payload["project"] == "node"
+    assert payload["project"] == "project"
     assert len(payload["entries"]) == 3
     breaking_entry = payload["entries"][0]
     assert breaking_entry["title"] == "Remove legacy API"
@@ -379,14 +382,14 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert "v1.0.0" in feature_entry["versions"]
     assert feature_entry["pr"] == 42
     assert feature_entry["prs"] == [42]
-    assert feature_entry["project"] == "node"
+    assert feature_entry["project"] == "project"
     assert feature_entry.get("excerpt") == "Adds an exciting capability."
 
     bugfix_entry = next(
         entry for entry in payload["entries"] if entry["title"] == "Fix ingest crash"
     )
     assert bugfix_entry["prs"] == [102, 115]
-    assert bugfix_entry["project"] == "node"
+    assert bugfix_entry["project"] == "project"
     assert bugfix_entry.get("excerpt") == "Resolves ingest worker crash when tokens expire."
     assert payload.get("compact") is True
 
@@ -394,12 +397,11 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "json",
+            str(project_dir),
+            "show",
+            "-j",
             "--no-emoji",
-            "-c",
+            "--compact",
             "v1.0.0",
         ],
     )
@@ -414,22 +416,35 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert all("🚀" not in entry["title"] for entry in payload_plain["entries"])
     assert all("💥" not in entry["title"] for entry in payload_plain["entries"])
 
+    get_missing_entry = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "show",
+            "-c",
+            "nonexistent-entry",
+        ],
+    )
+    assert get_missing_entry.exit_code != 0, get_missing_entry.output
+    assert "No entry found matching" in get_missing_entry.output
+
     validate_result = runner.invoke(
         cli,
-        ["--root", str(workspace_root), "validate"],
+        ["--root", str(project_dir), "validate"],
     )
     assert validate_result.exit_code == 0, validate_result.output
 
 
 def test_missing_project_reports_info_message(tmp_path: Path) -> None:
     runner = CliRunner()
-    result = runner.invoke(cli, ["--root", str(tmp_path), "list"])
+    result = runner.invoke(cli, ["--root", str(tmp_path), "show"])
     assert result.exit_code == 1
     expected_root = tmp_path.resolve()
     plain_prefix = click.utils.strip_ansi(INFO_PREFIX)
     expected_plain_output = (
         f"{plain_prefix}no tenzir-changelog project detected at {expected_root}.\n"
-        f"{plain_prefix}run from your project root or provide --root.\n"
+        f"{plain_prefix}run 'tenzir-changelog add' from your project root or provide --root.\n"
     )
     assert click.utils.strip_ansi(result.output) == expected_plain_output
     assert "Error:" not in result.output
@@ -437,9 +452,9 @@ def test_missing_project_reports_info_message(tmp_path: Path) -> None:
 
 def test_compact_export_style_from_config(tmp_path: Path) -> None:
     runner = CliRunner()
-    workspace_root = tmp_path / "workspace"
-    workspace_root.mkdir()
-    config_path = workspace_root / "config.yaml"
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    config_path = project_dir / "config.yaml"
     config_path.write_text(
         "\n".join(
             [
@@ -455,7 +470,7 @@ def test_compact_export_style_from_config(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
+            str(project_dir),
             "add",
             "--title",
             "Compact Feature",
@@ -473,7 +488,7 @@ def test_compact_export_style_from_config(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
+            str(project_dir),
             "release",
             "v0.1.0",
             "--description",
@@ -483,7 +498,7 @@ def test_compact_export_style_from_config(tmp_path: Path) -> None:
     )
     assert release_result.exit_code == 0, release_result.output
 
-    release_notes_path = workspace_root / "releases" / "v0.1.0" / "notes.md"
+    release_notes_path = project_dir / "releases" / "v0.1.0" / "notes.md"
     release_notes = release_notes_path.read_text(encoding="utf-8")
     assert "- **Compact Feature**: Adds compact defaults." in release_notes
     assert "### Compact Feature" not in release_notes
@@ -492,22 +507,22 @@ def test_compact_export_style_from_config(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "markdown",
+            str(project_dir),
+            "show",
+            "-m",
             "v0.1.0",
         ],
     )
     assert get_result.exit_code == 0, get_result.output
+    assert "Alpha release." not in get_result.output
     assert "- **Compact Feature**: Adds compact defaults." in get_result.output
 
 
 def test_get_unreleased_token(tmp_path: Path) -> None:
     runner = CliRunner()
-    workspace_root = tmp_path / "workspace"
-    workspace_root.mkdir()
-    (workspace_root / "config.yaml").write_text(
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "config.yaml").write_text(
         "\n".join(
             [
                 "id: sample",
@@ -521,7 +536,7 @@ def test_get_unreleased_token(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
+            str(project_dir),
             "add",
             "--title",
             "Pending Feature",
@@ -535,12 +550,12 @@ def test_get_unreleased_token(tmp_path: Path) -> None:
     )
     assert add_result.exit_code == 0, add_result.output
 
-    terminal_result = runner.invoke(cli, ["--root", str(workspace_root), "get", "unreleased"])
+    terminal_result = runner.invoke(cli, ["--root", str(project_dir), "show", "-c", "unreleased"])
     assert terminal_result.exit_code == 0, terminal_result.output
     plain_output = click.utils.strip_ansi(terminal_result.output)
     assert "Pending Feature" in plain_output
 
-    dash_terminal = runner.invoke(cli, ["--root", str(workspace_root), "get", "--", "-"])
+    dash_terminal = runner.invoke(cli, ["--root", str(project_dir), "show", "-c", "--", "-"])
     assert dash_terminal.exit_code == 0, dash_terminal.output
     dash_output = click.utils.strip_ansi(dash_terminal.output)
     assert "Pending Feature" in dash_output
@@ -549,10 +564,9 @@ def test_get_unreleased_token(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "markdown",
+            str(project_dir),
+            "show",
+            "-m",
             "unreleased",
         ],
     )
@@ -564,10 +578,9 @@ def test_get_unreleased_token(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "markdown",
+            str(project_dir),
+            "show",
+            "-m",
             "--no-emoji",
             "unreleased",
         ],
@@ -580,10 +593,9 @@ def test_get_unreleased_token(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "markdown",
+            str(project_dir),
+            "show",
+            "-m",
             "--",
             "-",
         ],
@@ -595,10 +607,9 @@ def test_get_unreleased_token(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "json",
+            str(project_dir),
+            "show",
+            "-j",
             "unreleased",
         ],
     )
@@ -614,10 +625,9 @@ def test_get_unreleased_token(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "json",
+            str(project_dir),
+            "show",
+            "-j",
             "--no-emoji",
             "unreleased",
         ],
@@ -630,10 +640,9 @@ def test_get_unreleased_token(tmp_path: Path) -> None:
         cli,
         [
             "--root",
-            str(workspace_root),
-            "get",
-            "--format",
-            "json",
+            str(project_dir),
+            "show",
+            "-j",
             "--",
             "-",
         ],
@@ -644,12 +653,12 @@ def test_get_unreleased_token(tmp_path: Path) -> None:
 
     list_unreleased = runner.invoke(
         cli,
-        ["--root", str(workspace_root), "list", "unreleased"],
+        ["--root", str(project_dir), "show", "unreleased"],
     )
     assert list_unreleased.exit_code == 0, list_unreleased.output
 
     list_dash = runner.invoke(
         cli,
-        ["--root", str(workspace_root), "list", "--", "-"],
+        ["--root", str(project_dir), "show", "--", "-"],
     )
     assert list_dash.exit_code == 0, list_dash.output

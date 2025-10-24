@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Mapping, MutableMapping, cast
+from typing import Any, Literal, MutableMapping, cast
 
 import yaml
 
@@ -52,13 +52,9 @@ def load_config(path: Path) -> Config:
     if not project_value:
         raise ValueError("Config missing 'id'")
 
-    workspace_raw = raw.get("workspace")
-    fallback_mapping: Mapping[str, Any] = (
-        workspace_raw if isinstance(workspace_raw, Mapping) else {}
-    )
-    name_raw = raw.get("name", fallback_mapping.get("name", project_value))
-    description_raw = raw.get("description", fallback_mapping.get("description", ""))
-    repository_raw = raw.get("repository", fallback_mapping.get("repository"))
+    name_raw = raw.get("name", project_value)
+    description_raw = raw.get("description", "")
+    repository_raw = raw.get("repository")
 
     export_style_raw = raw.get("export_style")
     export_style: ExportStyle = EXPORT_STYLE_STANDARD

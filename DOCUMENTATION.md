@@ -17,28 +17,27 @@ pipelines all share the same workflow.
 
 ## Quick Start
 
-1. Bootstrap the changelog project inside your repository:
+1. Create your first changelog entry (this also scaffolds the project):
    ```sh
-   uvx tenzir-changelog bootstrap
+   uvx tenzir-changelog add --title "Initial setup" --type change --description "Track changelog work."
    ```
-   The assistant creates the standard directory structure, seeds configuration,
-   writes `config.yaml`, and lets you register the project name without touching
-   files manually.
+   The first invocation writes `config.yaml`, prepares `unreleased/` and
+   `releases/`, and infers sensible defaults from the directory name—no
+   separate bootstrap step required.
 2. View the current changelog for your working tree:
    ```sh
-   uvx tenzir-changelog
+   uvx tenzir-changelog show
    ```
-   The default `list` command renders a table of all entries with row numbers,
-   making it easy to reference specific entries. Use the project configuration
-   and any staged or committed entry files.
-3. Add a new changelog entry when you prepare a pull request:
+   The default table lists every entry with row numbers, making it easy to
+   reference specific items. Inspect a card layout with
+   `uvx tenzir-changelog show -c 1` or export a release via
+   `uvx tenzir-changelog show -m v0.2.0`.
+3. Add entries as you prepare pull requests:
    ```sh
-   uvx tenzir-changelog add
+   uvx tenzir-changelog add --title "Introduce pipeline builder" --type feature --pr 101
    ```
-   The assistant collects metadata (type, GitHub PR information, authors,
-   components) and writes a ready-to-commit Markdown file under `unreleased/`.
-   Defaults such as the configured project come from `config.yaml`, so you just
-   press enter through most prompts.
+   Pass flags for authors, projects, and descriptions to avoid interactive
+   prompts, or let the CLI discover metadata automatically.
 
 ## CLI Overview
 
@@ -46,40 +45,19 @@ pipelines all share the same workflow.
 `--config` to point at an explicit configuration file (YAML format, defaulting
 to `config.yaml`) and `--root` to operate on another repository.
 
-- **`tenzir-changelog bootstrap`**  
-  Initialize or update the changelog project in the current repository. The
-  bootstrapper:
-  - Creates the `unreleased/` and `releases/` directories
-  - Writes a starter `config.yaml` with detected repository details, the project
-    name, and GitHub settings
-  - Updates the config so future commands can reuse the defaults
-
-- **`tenzir-changelog [list]`**
-  List changelog entries in a table with row numbers. The default command when
-  no command is specified. Accepts positional arguments to filter entries:
-  - Row numbers (e.g., `list 1 3 5`) to list specific entries
-  - Entry IDs (e.g., `list configure`) to filter by ID
-  - Version numbers (e.g., `list v0.2.0`) to list entries in a release
-
-  Additional filters include:
-  - `--project <name>` to scope to a single project
-  - `--release <id>` to display a specific release manifest
-  - `--since <version>` to collate entries newer than the provided version tag
-  - `--banner` to display project information header
-
-- **`tenzir-changelog get <identifiers>`**
-  Inspect changelog entries in the terminal or export them as Markdown or JSON.
-  Accepts row numbers, entry IDs (full or partial), release versions, and the
-  tokens `unreleased` or `-` to target pending entries.
-  - `--format terminal|markdown|json` (default `terminal`) chooses the output
-    format.
-  - `-c/--compact` (and `--no-compact`) toggles the compact bullet layout for
-    Markdown/JSON output, defaulting to the project's `export_style`.
-
-  When emitting Markdown or JSON, pass either a release version or the
-  `unreleased` token. Example: `uv run tenzir-changelog --root changelog get --format markdown v0.2.0 > changelog/releases/v0.2.0/notes.md`
-  rewrites release notes in the standard layout; adding `-c` switches to the
-  compact summary.
+- **`tenzir-changelog show [identifiers...]`**
+  Display changelog entries in multiple views. With no flags it renders a rich
+  table of entries, accepting row numbers, entry IDs (full or partial), release
+  versions, and the tokens `unreleased` or `-` to target pending entries.
+  - Table view (default) mirrors the old `list` command. Pass `--project`,
+    `--release`, `--since`, or `--banner` to filter or augment the table output.
+  - `-c/--card` shows detailed cards for each matching entry; at least one
+    identifier is required.
+  - `-m/--markdown` exports a release or the unreleased bucket as Markdown.
+  - `-j/--json` exports a release or the unreleased bucket as JSON.
+  - `--compact`/`--no-compact` toggles the compact export layout for Markdown
+    and JSON, defaulting to the project's `export_style`.
+  - `--no-emoji` removes type emoji from the output (where supported).
 
 - **`tenzir-changelog add`**
 Create a new change entry in `unreleased/`. Highlights:
@@ -128,7 +106,7 @@ Create a new change entry in `unreleased/`. Highlights:
   serves as the canonical slug written into entry metadata, while `name`
   provides the human-friendly label surfaced in release titles and CLI output.
   Set `export_style` to `compact` to prefer the bullet-list layout for release
-  notes and `tenzir-changelog get --format markdown` without passing `-c`
+  notes and `tenzir-changelog show -m` without passing `--compact`
   each time.
 - **Repositories:** A project may pull changelog entries from other repositories
   (e.g., satellites or private modules). Configuration entries include the
@@ -137,9 +115,9 @@ Create a new change entry in `unreleased/`. Highlights:
 ## Example Workflows
 
 - **First-time setup:**  
-  Run `uvx tenzir-changelog bootstrap` in each repository to provision the
-  changelog directory layout and project. Repeat with `--update` whenever
-  requirements evolve.
+  Run `uvx tenzir-changelog show` in any repository to confirm the CLI sees
+  your changelog project, and rely on `uvx tenzir-changelog add` to create the
+  scaffold automatically on first use.
 
 - **Daily development:**  
   Developers run `uvx tenzir-changelog add` while preparing pull requests to
@@ -147,7 +125,7 @@ Create a new change entry in `unreleased/`. Highlights:
   guarantee metadata completeness.
 
 - **Cutting a release:**  
-  Maintainers execute `uvx tenzir-changelog release create v5.4.0`, supply the
+  Maintainers execute `uvx tenzir-changelog release v5.4.0`, supply the
   introductory notes (or reference a Markdown file with richer content and
   imagery), and review the generated manifest before handing it off to docs.
   The command pulls the project display name from `config.yaml`, so no extra switches
@@ -156,7 +134,7 @@ Create a new change entry in `unreleased/`. Highlights:
 ## Tutorial
 
 This walkthrough mirrors the dogfooded project under `changelog/` and shows
-how to bootstrap a repository, add entries, preview the backlog, and publish a
+how to initialize a repository, add entries, preview the backlog, and publish a
 release manifest with richer introductory material. All commands run from the
 project root.
 
@@ -164,28 +142,23 @@ project root.
    ```sh
    mkdir my-changelog
    cd my-changelog
-   uvx tenzir-changelog bootstrap
-   ```
-   Accept the defaults for project name. When asked for a
-   project identifier, enter `changelog`. After the command completes, inspect
-   `config.yaml`:
-   ```yaml
-   id: changelog
-   name: changelog
-   description: The Tenzir Changelog Management Utility
-   repository: tenzir/changelog
-   ```
-
-2. **Capture entries:**  
-   Record three representative changes with authors and pull-request numbers:
-   ```sh
    uvx tenzir-changelog add \
      --title "Add pipeline builder" \
      --type feature \
      --description "Introduces the new pipeline builder UI." \
      --author alice \
      --pr 101
+   ```
+   The first `add` invocation scaffolds the project automatically—no manual
+   config editing needed. After the command completes, inspect `config.yaml`:
+   ```yaml
+   id: my-changelog
+   name: My Changelog
+   ```
 
+2. **Capture entries:**  
+   Record additional representative changes with authors and pull-request numbers:
+   ```sh
    uvx tenzir-changelog add \
      --title "Fix ingest crash" \
      --type bugfix \
@@ -221,13 +194,13 @@ stores a `prs:` list in the generated frontmatter automatically.
 
 3. **Preview the changelog:**
    ```sh
-   uvx tenzir-changelog list
+   uvx tenzir-changelog show
    ```
-   The command renders a table with row numbers summarizing IDs, titles, types,
-   project, pull-request numbers, and authors for unreleased entries. You can
-   view details of any entry using its row number:
+   The default table mirrors the old `list` command, summarizing IDs, titles,
+   types, projects, pull-request numbers, and authors. Inspect a detailed card
+   for any entry with:
    ```sh
-   uvx tenzir-changelog get 1
+   uvx tenzir-changelog show -c 1
    ```
 
 4. **Prepare release notes:**  
@@ -301,7 +274,7 @@ stores a `prs:` list in the generated frontmatter automatically.
 
 7. **Export the release:**  
    ```sh
-   uvx tenzir-changelog get --format markdown v0.1.0
+   uvx tenzir-changelog show -m v0.1.0
    ```
    The command prints a Markdown summary grouped by entry type to STDOUT. Use
    `--format json` for machine-readable output or add `-c` for the compact

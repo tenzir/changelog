@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import sys
 import textwrap
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Iterable, Optional, TypedDict, Literal
+from typing import Any, Iterable, Optional, TypedDict, Literal, cast
 
 import click
 from click.core import ParameterSource
@@ -45,7 +45,7 @@ from .releases import (
     write_release_manifest,
 )
 from .validate import run_validation
-from .utils import console, extract_excerpt, guess_git_remote, slugify
+from .utils import console, extract_excerpt, slugify
 
 INFO_PREFIX = "\033[94;1mi\033[0m "
 ENTRY_TYPE_STYLES = {
@@ -141,6 +141,7 @@ TYPE_SECTION_TITLES = {
 ENTRY_EXPORT_ORDER = ("breaking", "feature", "change", "bugfix")
 UNRELEASED_IDENTIFIER = "unreleased"
 DASH_IDENTIFIER = "-"
+DEFAULT_PROJECT_ID = "changelog"
 
 
 IdentifierKind = Literal["row", "entry", "release", "unreleased"]
@@ -307,23 +308,55 @@ class CLIContext:
     config_path: Path
     _config: Optional[Config] = None
 
-    def ensure_config(self) -> Config:
+    def ensure_config(self, *, create_if_missing: bool = False) -> Config:
         if self._config is None:
-            if not self.config_path.exists():
-                project_root = self.config_path.parent
-                message = "\n".join(
-                    [
-                        f"{INFO_PREFIX}no tenzir-changelog project detected at {project_root}.",
-                        f"{INFO_PREFIX}run from your project root or provide --root.",
-                    ]
+            config_path = self.config_path
+            project_root = config_path.parent
+            self.project_root = project_root
+            if not config_path.exists():
+                if not create_if_missing:
+                    message = "\n".join(
+                        [
+                            f"{INFO_PREFIX}no tenzir-changelog project detected at {project_root}.",
+                            f"{INFO_PREFIX}run 'tenzir-changelog add' from your project root or provide --root.",
+                        ]
+                    )
+                    click.echo(message, err=True)
+                    raise click.exceptions.Exit(1)
+                config = _initialize_project_scaffold(
+                    project_root=project_root,
+                    config_path=config_path,
                 )
-                click.echo(message, err=True)
-                raise click.exceptions.Exit(1)
-            self._config = load_config(self.config_path)
+                self._config = config
+            else:
+                self._config = load_config(config_path)
+        entry_directory(self.project_root).mkdir(parents=True, exist_ok=True)
+        release_directory(self.project_root).mkdir(parents=True, exist_ok=True)
         return self._config
 
     def reset_config(self, config: Config) -> None:
         self._config = config
+
+
+def _default_project_id(project_root: Path) -> str:
+    slug = slugify(project_root.name)
+    return slug or DEFAULT_PROJECT_ID
+
+
+def _default_project_name(project_id: str) -> str:
+    words = project_id.replace("-", " ").strip()
+    return words.title() if words else "Changelog"
+
+
+def _initialize_project_scaffold(*, project_root: Path, config_path: Path) -> Config:
+    project_id = _default_project_id(project_root)
+    project_name = _default_project_name(project_id)
+    config = Config(id=project_id, name=project_name)
+    save_config(config, config_path)
+    entry_directory(project_root).mkdir(parents=True, exist_ok=True)
+    release_directory(project_root).mkdir(parents=True, exist_ok=True)
+    console.print(f"[green]Initialized changelog project[/green] at {project_root}")
+    return config
 
 
 def _resolve_project_root(value: Path) -> Path:
@@ -384,81 +417,7 @@ def cli(ctx: click.Context, root: Path, config: Optional[Path]) -> None:
     ctx.obj = CLIContext(project_root=root, config_path=config_path)
 
     if ctx.invoked_subcommand is None:
-        ctx.invoke(get)
-
-
-@cli.command("bootstrap")
-@click.option("--update", is_flag=True, help="Update an existing configuration.")
-@click.pass_obj
-def bootstrap_cmd(ctx: CLIContext, update: bool) -> None:
-    """Create or update the changelog project."""
-    repo_root = ctx.project_root
-    config_path = ctx.config_path
-    default_repo_config = default_config_path(repo_root)
-
-    # When operating from a repository root, place the project under ./changelog/.
-    if not config_path.exists() and config_path == default_repo_config:
-        workspace_root = repo_root / "changelog"
-        config_path = default_config_path(workspace_root)
-        ctx.config_path = config_path
-    else:
-        workspace_root = config_path.parent
-
-    ctx.project_root = workspace_root
-
-    existing_config: Optional[Config] = None
-    if config_path.exists():
-        if not update:
-            raise click.ClickException(
-                f"Config already exists at {config_path}. Re-run with --update to modify it."
-            )
-        existing_config = load_config(config_path)
-
-    project_name_default = existing_config.name if existing_config else repo_root.name
-    project_description_default = existing_config.description if existing_config else ""
-    repo_default = existing_config.repository if existing_config else None
-    repo_guess = guess_git_remote(repo_root)
-    if repo_default is None and repo_guess:
-        repo_default = repo_guess
-
-    project_name = click.prompt("Project name", default=project_name_default, show_default=True)
-    project_description = click.prompt(
-        "Project description", default=project_description_default, show_default=False
-    )
-    repository = (
-        click.prompt(
-            "GitHub repository (owner/name)",
-            default=repo_default or "",
-            show_default=bool(repo_default),
-        ).strip()
-        or None
-    )
-
-    slug_base = repo_root if repo_root != workspace_root else workspace_root
-    project = _prompt_project(existing_config.id if existing_config else None, slug_base)
-
-    config = Config(
-        id=project,
-        name=project_name,
-        description=project_description,
-        repository=repository,
-        intro_template=existing_config.intro_template if existing_config else None,
-        assets_dir=existing_config.assets_dir if existing_config else None,
-    )
-
-    save_config(config, config_path)
-    ctx.reset_config(config)
-
-    # Ensure directories exist.
-    entry_directory(workspace_root).mkdir(parents=True, exist_ok=True)
-    release_directory(workspace_root).mkdir(parents=True, exist_ok=True)
-
-    console.print(
-        Panel.fit(
-            f"[bold green]Changelog project ready[/bold green]\nConfig: {config_path}",
-            title="Bootstrap",
-        )
-    )
+        ctx.invoke(show_entries)
 
 
 def _filter_entries_by_project(
@@ -565,6 +524,8 @@ def _render_entries(
     config: Config,
     show_banner: bool = False,
     release_order: dict[str, int] | None = None,
+    *,
+    include_emoji: bool = True,
 ) -> None:
     if show_banner:
         _render_project_header(config)
@@ -670,8 +631,11 @@ def _render_entries(
         type_value = metadata.get("type", "change")
         versions = release_index.get(entry.entry_id)
         version_display = ", ".join(versions) if versions else "—"
-        type_emoji = ENTRY_TYPE_EMOJIS.get(type_value, "•")
-        type_display = Text(type_emoji, style=ENTRY_TYPE_STYLES.get(type_value, ""))
+        if include_emoji:
+            glyph = ENTRY_TYPE_EMOJIS.get(type_value, "•")
+        else:
+            glyph = type_value[:1].upper() if type_value else "?"
+        type_display = Text(glyph, style=ENTRY_TYPE_STYLES.get(type_value, ""))
         row: list[RenderableType] = []
         if "num" in visible_columns:
             row.append(str(row_num))
@@ -835,31 +799,16 @@ def _render_single_entry(
     console.print()
 
 
-@cli.command("list")
-@click.argument("identifiers", nargs=-1, required=False)
-@click.option("--project", "project_filter", multiple=True, help="Filter by project key.")
-@click.option(
-    "--release",
-    "release_version",
-    default=None,
-    help="Show a specific release.",
-)
-@click.option(
-    "--since",
-    "since_version",
-    help="Only include entries newer than the specified release version.",
-)
-@click.option("--banner", is_flag=True, help="Display a project banner above entries.")
-@click.pass_obj
-def list_entries(
+def _show_entries_table(
     ctx: CLIContext,
     identifiers: tuple[str, ...],
     project_filter: tuple[str, ...],
     release_version: Optional[str],
     since_version: Optional[str],
     banner: bool,
+    *,
+    include_emoji: bool,
 ) -> None:
-    """List changelog entries in a table."""
     config = ctx.ensure_config()
     project_root = ctx.project_root
     projects = set(project_filter)
@@ -917,7 +866,12 @@ def list_entries(
     entries = _filter_entries_by_project(entries, projects, config.id)
     render_release_order = release_order if not identifiers else None
     _render_entries(
-        entries, release_index, config, show_banner=banner, release_order=render_release_order
+        entries,
+        release_index,
+        config,
+        show_banner=banner,
+        release_order=render_release_order,
+        include_emoji=include_emoji,
     )
 
 
@@ -961,13 +915,28 @@ def _resolve_identifier(
     config: Config,
     sorted_entries: list[Entry],
     entry_map: dict[str, Entry],
+    allowed_kinds: Optional[Iterable[IdentifierKind]] = None,
 ) -> IdentifierResolution:
+    allowed = (
+        set(allowed_kinds)
+        if allowed_kinds is not None
+        else {
+            "row",
+            "entry",
+            "release",
+            "unreleased",
+        }
+    )
     token = identifier.strip()
     if not token:
         raise click.ClickException("Identifier cannot be empty.")
 
     lowered = token.lower()
     if lowered in {UNRELEASED_IDENTIFIER, DASH_IDENTIFIER}:
+        if "unreleased" not in allowed:
+            raise click.ClickException(
+                "The 'unreleased' identifier is not supported by this command."
+            )
         entries = sort_entries_desc(_collect_unused_entries_for_release(project_root, config))
         return IdentifierResolution(kind="unreleased", entries=entries, identifier=token)
 
@@ -977,6 +946,8 @@ def _resolve_identifier(
         row_num = None
 
     if row_num is not None:
+        if "row" not in allowed:
+            raise click.ClickException("Row numbers are not supported by this command.")
         if 1 <= row_num <= len(sorted_entries):
             return IdentifierResolution(
                 kind="row",
@@ -988,6 +959,10 @@ def _resolve_identifier(
         )
 
     if token.startswith(("v", "V")):
+        if "release" not in allowed:
+            raise click.ClickException(
+                f"Release identifiers such as '{token}' are not supported by this command."
+            )
         manifest, release_entries = _load_release_entries_for_display(
             project_root, token, entry_map
         )
@@ -1005,7 +980,7 @@ def _resolve_identifier(
     matches = [(entry_id, entry) for entry_id, entry in entry_map.items() if token in entry_id]
     if not matches:
         raise click.ClickException(
-            f"No entry found matching '{token}'. Use 'tenzir-changelog list' to see all entries."
+            f"No entry found matching '{token}'. Use 'tenzir-changelog show' to see all entries."
         )
     if len(matches) > 1:
         match_ids = [entry_id for entry_id, _ in matches]
@@ -1019,18 +994,178 @@ def _resolve_identifier(
     return IdentifierResolution(kind="entry", entries=[entry], identifier=entry_id)
 
 
-@cli.command("get")
-@click.argument("identifiers", nargs=-1)
+ShowView = Literal["table", "card", "markdown", "json"]
+
+
+def _gather_entry_context(
+    project_root: Path,
+) -> tuple[dict[str, Entry], dict[str, list[str]], dict[str, int], list[Entry]]:
+    entries = list(iter_entries(project_root))
+    entry_map = {entry.entry_id: entry for entry in entries}
+    released_entries = collect_release_entries(project_root)
+    for entry_id, entry in released_entries.items():
+        entry_map.setdefault(entry_id, entry)
+    release_index_all = build_entry_release_index(project_root, project=None)
+    release_order = _build_release_sort_order(project_root)
+    sorted_entries = _sort_entries_for_display(entry_map.values(), release_index_all, release_order)
+    return entry_map, release_index_all, release_order, sorted_entries
+
+
+def _show_entries_card(
+    ctx: CLIContext,
+    identifiers: tuple[str, ...],
+    *,
+    include_emoji: bool,
+) -> None:
+    if not identifiers:
+        raise click.ClickException(
+            "Provide at least one identifier such as a row number, entry ID, release version, or the 'unreleased' token."
+        )
+
+    config = ctx.ensure_config()
+    project_root = ctx.project_root
+    entry_map, release_index_all, _, sorted_entries = _gather_entry_context(project_root)
+    resolutions = [
+        _resolve_identifier(
+            identifier,
+            project_root=project_root,
+            config=config,
+            sorted_entries=sorted_entries,
+            entry_map=entry_map,
+        )
+        for identifier in identifiers
+    ]
+
+    release_index = release_index_all
+    for resolution in resolutions:
+        if resolution.kind == "unreleased" and not resolution.entries:
+            console.print("[yellow]No unreleased entries found.[/yellow]")
+            continue
+        for entry in resolution.entries:
+            versions = release_index.get(entry.entry_id, [])
+            if resolution.kind == "release" and resolution.manifest:
+                version = resolution.manifest.version
+                if version and version not in versions:
+                    versions = versions + [version]
+            _render_single_entry(entry, versions, include_emoji=include_emoji)
+
+
+def _show_entries_export(
+    ctx: CLIContext,
+    identifiers: tuple[str, ...],
+    *,
+    view: ShowView,
+    compact: Optional[bool],
+    include_emoji: bool,
+) -> None:
+    if len(identifiers) != 1:
+        raise click.ClickException(
+            "Markdown and JSON output accept a single identifier. Use a release version, 'unreleased', or '-'."
+        )
+
+    config = ctx.ensure_config()
+    project_root = ctx.project_root
+    entry_map, _, _, sorted_entries = _gather_entry_context(project_root)
+    resolution = _resolve_identifier(
+        identifiers[0],
+        project_root=project_root,
+        config=config,
+        sorted_entries=sorted_entries,
+        entry_map=entry_map,
+    )
+
+    if resolution.kind not in {"release", "unreleased"}:
+        raise click.ClickException(
+            "Markdown and JSON output require a release version or the 'unreleased' token."
+        )
+
+    compact_flag = config.export_style == EXPORT_STYLE_COMPACT if compact is None else compact
+    release_index_export = build_entry_release_index(project_root, project=config.id)
+    manifest = resolution.manifest if resolution.kind == "release" else None
+    manifest_for_export: ReleaseManifest | None
+    if manifest is not None and manifest.description:
+        manifest_for_export = replace(manifest, description="")
+    else:
+        manifest_for_export = manifest
+    export_entries = sort_entries_desc(list(resolution.entries))
+
+    if view == "markdown":
+        if compact_flag:
+            content = _export_markdown_compact(
+                manifest_for_export,
+                export_entries,
+                config,
+                release_index_export,
+                include_emoji=include_emoji,
+            )
+        else:
+            content = _export_markdown_release(
+                manifest_for_export,
+                export_entries,
+                config,
+                release_index_export,
+                include_emoji=include_emoji,
+            )
+        click.echo(content, nl=False)
+    else:
+        payload = _export_json_payload(
+            manifest_for_export,
+            export_entries,
+            config,
+            release_index_export,
+            compact=compact_flag,
+        )
+        click.echo(json.dumps(payload, indent=2))
+
+
+@cli.command("show")
+@click.argument("identifiers", nargs=-1, required=False)
 @click.option(
-    "--format",
-    "output_format",
-    type=click.Choice(["terminal", "markdown", "json"], case_sensitive=False),
-    default="terminal",
-    show_default=True,
-    help="Output format.",
+    "-t",
+    "--table",
+    "view_flags",
+    flag_value="table",
+    help="Display entries in a table view (default).",
+    multiple=True,
 )
 @click.option(
     "-c",
+    "--card",
+    "view_flags",
+    flag_value="card",
+    help="Display entries as detailed cards.",
+    multiple=True,
+)
+@click.option(
+    "-m",
+    "--markdown",
+    "view_flags",
+    flag_value="markdown",
+    help="Export entries as Markdown.",
+    multiple=True,
+)
+@click.option(
+    "-j",
+    "--json",
+    "view_flags",
+    flag_value="json",
+    help="Export entries as JSON.",
+    multiple=True,
+)
+@click.option("--project", "project_filter", multiple=True, help="Filter by project key.")
+@click.option(
+    "--release",
+    "release_version",
+    default=None,
+    help="Show a specific release.",
+)
+@click.option(
+    "--since",
+    "since_version",
+    help="Only include entries newer than the specified release version.",
+)
+@click.option("--banner", is_flag=True, help="Display a project banner above entries.")
+@click.option(
     "--compact",
     "compact",
     flag_value=True,
@@ -1046,136 +1181,83 @@ def _resolve_identifier(
 @click.option(
     "--no-emoji",
     is_flag=True,
-    help="Disable type emoji in entry headings.",
+    help="Disable type emoji in entry output.",
 )
 @click.pass_obj
-def get(
+def show_entries(
     ctx: CLIContext,
     identifiers: tuple[str, ...],
-    output_format: str,
+    view_flags: tuple[str, ...],
+    project_filter: tuple[str, ...],
+    release_version: Optional[str],
+    since_version: Optional[str],
+    banner: bool,
     compact: Optional[bool],
     no_emoji: bool,
 ) -> None:
-    """Get changelog entries in the terminal or export them as Markdown/JSON."""
-    project_root = ctx.project_root
-    output_format = output_format.lower()
+    """Display changelog entries in tables, cards, or export formats."""
 
-    if not identifiers:
-        raise click.ClickException(
-            "Provide at least one identifier such as a row number, entry ID, release version, or the 'unreleased' token."
-        )
-
-    config = ctx.ensure_config()
+    view_choice = view_flags[-1] if view_flags else "table"
+    if view_choice not in {"table", "card", "markdown", "json"}:
+        raise click.ClickException(f"Unsupported view '{view_choice}'.")
+    view = cast(ShowView, view_choice)
     include_emoji = not no_emoji
 
-    entries = list(iter_entries(project_root))
-    entry_map = {entry.entry_id: entry for entry in entries}
-    released_entries = collect_release_entries(project_root)
-    for entry_id, entry in released_entries.items():
-        if entry_id not in entry_map:
-            entry_map[entry_id] = entry
-
-    release_index_all = build_entry_release_index(project_root, project=None)
-    release_order = _build_release_sort_order(project_root)
-    sorted_entries = _sort_entries_for_display(entry_map.values(), release_index_all, release_order)
-    resolutions = [
-        _resolve_identifier(
-            identifier,
-            project_root=project_root,
-            config=config,
-            sorted_entries=sorted_entries,
-            entry_map=entry_map,
-        )
-        for identifier in identifiers
-    ]
-
-    if output_format == "terminal":
+    if view == "table":
         if compact is not None:
             raise click.ClickException(
-                "--compact/--no-compact only apply to markdown and json output."
+                "--compact/--no-compact only apply to markdown and json views."
             )
-        release_index = release_index_all
-        for resolution in resolutions:
-            if resolution.kind == "unreleased" and not resolution.entries:
-                console.print("[yellow]No unreleased entries found.[/yellow]")
-                continue
-            for entry in resolution.entries:
-                versions = release_index.get(entry.entry_id, [])
-                if resolution.kind == "release" and resolution.manifest:
-                    version = resolution.manifest.version
-                    if version and version not in versions:
-                        versions = versions + [version]
-                _render_single_entry(entry, versions, include_emoji=include_emoji)
+        release_version = _normalize_optional(release_version)
+        since_version = _normalize_optional(since_version)
+        _show_entries_table(
+            ctx,
+            identifiers,
+            project_filter,
+            release_version,
+            since_version,
+            banner,
+            include_emoji=include_emoji,
+        )
         return
 
-    if len(resolutions) != 1:
+    if project_filter or release_version or since_version or banner:
         raise click.ClickException(
-            "Markdown and JSON output accept a single identifier. Use a release version, 'unreleased', or '-'."
+            "--project/--release/--since/--banner are only available in table view."
         )
 
-    resolution = resolutions[0]
-    if resolution.kind not in {"release", "unreleased"}:
-        raise click.ClickException(
-            "Markdown and JSON output require a release version or the 'unreleased' token."
-        )
-
-    compact_flag = config.export_style == EXPORT_STYLE_COMPACT if compact is None else compact
-    release_index_export = build_entry_release_index(project_root, project=config.id)
-    manifest = resolution.manifest if resolution.kind == "release" else None
-    export_entries = sort_entries_desc(list(resolution.entries))
-
-    if output_format == "markdown":
-        if compact_flag:
-            content = _export_markdown_compact(
-                manifest,
-                export_entries,
-                config,
-                release_index_export,
-                include_emoji=include_emoji,
+    if view == "card":
+        if compact is not None:
+            raise click.ClickException(
+                "--compact/--no-compact only apply to markdown and json views."
             )
-        else:
-            content = _export_markdown_release(
-                manifest,
-                export_entries,
-                config,
-                release_index_export,
-                include_emoji=include_emoji,
-            )
-        click.echo(content, nl=False)
-    else:
-        payload = _export_json_payload(
-            manifest,
-            export_entries,
-            config,
-            release_index_export,
-            compact=compact_flag,
+        _show_entries_card(ctx, identifiers, include_emoji=include_emoji)
+        return
+
+    if view in {"markdown", "json"}:
+        _show_entries_export(
+            ctx,
+            identifiers,
+            view=view,
+            compact=compact,
+            include_emoji=include_emoji,
         )
-        click.echo(json.dumps(payload, indent=2))
+        return
+
+    raise click.ClickException(f"Unsupported view '{view}'.")
 
 
-LIST_COMMAND_SUMMARY = "List changelog entries in a table."
-list_entries_help = _command_help_text(
-    summary=LIST_COMMAND_SUMMARY,
-    command_name="list",
-    verb="list",
-    row_hint="Row numbers (e.g., 1, 2, 3) or 'unreleased'/'-' to list specific entries",
-    version_hint="to list entries in that release",
-)
-list_entries.__doc__ = list_entries_help
-list_entries.help = list_entries_help
-list_entries.short_help = LIST_COMMAND_SUMMARY
-
-GET_COMMAND_SUMMARY = "Get or export changelog entries."
-get_help = _command_help_text(
-    summary=GET_COMMAND_SUMMARY,
-    command_name="get",
-    verb="get",
+SHOW_COMMAND_SUMMARY = "Display changelog entries in tables, cards, or exports."
+show_help = _command_help_text(
+    summary=SHOW_COMMAND_SUMMARY,
+    command_name="show",
+    verb="show",
     row_hint="Row numbers (e.g., 1, 2, 3), 'unreleased', or '-'",
-    version_hint="to get or export all entries in that release",
+    version_hint="to show all entries in that release or export it",
 )
-get.__doc__ = get_help
-get.help = get_help
-get.short_help = GET_COMMAND_SUMMARY
+show_entries.__doc__ = show_help
+show_entries.help = show_help
+show_entries.short_help = SHOW_COMMAND_SUMMARY
 
 
 def _prompt_entry_body(initial: str = "") -> str:
@@ -1380,7 +1462,7 @@ def add(
     description: Optional[str],
 ) -> None:
     """Create a new changelog entry."""
-    config = ctx.ensure_config()
+    config = ctx.ensure_config(create_if_missing=True)
     project_root = ctx.project_root
 
     title = title or _prompt_text("Title")
@@ -1814,12 +1896,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     """Entry point for console_scripts."""
     argv = argv if argv is not None else sys.argv[1:]
 
-    # If no command is specified, default to 'list'
+    # If no command is specified, default to 'show'
     # Check if any arg is a known command
     has_command = any(arg in cli.commands for arg in argv)
     if not has_command:
-        # No command found, inject 'list' at the end (after options like --root)
-        argv = list(argv) + ["list"]
+        # No command found, inject 'show' at the end (after options like --root)
+        argv = list(argv) + ["show"]
 
     try:
         cli.main(args=list(argv), prog_name="tenzir-changelog", standalone_mode=False)
