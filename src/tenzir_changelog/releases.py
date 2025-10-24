@@ -22,26 +22,6 @@ yaml.SafeDumper.add_representer(date, _represent_date)
 NOTES_FILENAME = "notes.md"
 
 
-def _extract_release_summary(notes_path: Path) -> str:
-    if not notes_path.exists():
-        return ""
-    summary_lines: list[str] = []
-    collecting = False
-    for line in notes_path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped:
-            if collecting:
-                break
-            continue
-        if stripped.startswith("#"):
-            if collecting:
-                break
-            continue
-        summary_lines.append(stripped)
-        collecting = True
-    return " ".join(summary_lines).strip()
-
-
 RELEASE_DIR = Path("releases")
 
 
@@ -101,12 +81,6 @@ def iter_release_manifests(project_root: Path) -> Iterable[ReleaseManifest]:
         entries_dir = path.parent / "entries"
         entry_files = sorted(entries_dir.glob("*.md"))
         manifest.entries = [entry_file.stem for entry_file in entry_files]
-        if not manifest.description:
-            summary = _extract_release_summary(
-                _manifest_root(project_root, manifest) / NOTES_FILENAME
-            )
-            if summary:
-                manifest.description = summary
         yield manifest
 
 

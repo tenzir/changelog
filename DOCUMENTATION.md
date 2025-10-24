@@ -54,7 +54,7 @@ to `config.yaml`) and `--root` to operate on another repository.
     name, and GitHub settings
   - Updates the config so future commands can reuse the defaults
 
-- **`tenzir-changelog` / `tenzir-changelog list`**
+- **`tenzir-changelog [list]`**
   List changelog entries in a table with row numbers. The default command when
   no command is specified. Accepts positional arguments to filter entries:
   - Row numbers (e.g., `list 1 3 5`) to show specific entries
@@ -91,9 +91,10 @@ Create a new change entry in `unreleased/`. Highlights:
     contributors without local write access
   - Enforces naming conventions, validates required frontmatter, and can append
     changelog fragments to an existing draft entry
-  - Assigns globally sequential filenames with four-digit numeric prefixes,
-    e.g., `0012-improve-help-formatting.md`, so lexicographic order matches the
-    changelog chronology even after edits
+  - Assigns globally sequential filenames with two-digit numeric prefixes,
+    e.g., `01-improve-help-formatting.md`, automatically widening once more than
+    99 entries exist so lexicographic order matches the changelog chronology even
+    after edits
 
 - **`tenzir-changelog release <version>`**
   Assemble a release under `releases/` by moving every unused entry file into
@@ -136,7 +137,7 @@ Create a new change entry in `unreleased/`. Highlights:
 ## Example Workflows
 
 - **First-time setup:**  
-Run `uvx tenzir-changelog bootstrap` in each repository to provision the
+  Run `uvx tenzir-changelog bootstrap` in each repository to provision the
   changelog directory layout and project. Repeat with `--update` whenever
   requirements evolve.
 

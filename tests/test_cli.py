@@ -11,7 +11,7 @@ from click.testing import CliRunner
 import yaml
 
 from tenzir_changelog.cli import INFO_PREFIX, cli
-from tenzir_changelog.entries import read_entry
+from tenzir_changelog.entries import ENTRY_PREFIX_WIDTH, read_entry
 
 
 def test_bootstrap_add_and_release(tmp_path: Path) -> None:
@@ -104,7 +104,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert feature_entry_matches
     feature_entry = feature_entry_matches[0]
     assert feature_entry.stem.split("-", 1)[0].isdigit()
-    assert len(feature_entry.stem.split("-", 1)[0]) >= 4
+    assert len(feature_entry.stem.split("-", 1)[0]) >= ENTRY_PREFIX_WIDTH
     entry_text = feature_entry.read_text(encoding="utf-8")
     assert "created:" in entry_text
     assert "pr: 42" in entry_text

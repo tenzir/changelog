@@ -13,7 +13,7 @@ from .utils import coerce_date, slugify
 
 UNRELEASED_DIR = Path("unreleased")
 ENTRY_TYPES = ("breaking", "feature", "bugfix", "change")
-ENTRY_PREFIX_WIDTH = 4
+ENTRY_PREFIX_WIDTH = 2
 ENTRY_FILENAME_SEPARATOR = "-"
 
 
