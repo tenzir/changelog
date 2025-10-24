@@ -169,11 +169,11 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         "- **Fix ingest crash**: Resolves ingest worker crash when tokens expire."
         " (By @bob in #102 and #115)" in release_text
     )
-    assert "## 🌟 Features" in release_text
+    assert "## 🚀 Features" in release_text
     assert "## 🐞 Bug fixes" in release_text
     assert (
         release_text.index("## 💥 Breaking changes")
-        < release_text.index("## 🌟 Features")
+        < release_text.index("## 🚀 Features")
         < release_text.index("## 🐞 Bug fixes")
     )
     assert "![Image](assets/hero.png)" in release_text
@@ -241,7 +241,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     )
     assert show_md.exit_code == 0, show_md.output
     assert "## 💥 Breaking changes" in show_md.output
-    assert "## 🌟 Features" in show_md.output
+    assert "## 🚀 Features" in show_md.output
     assert "### Remove legacy API" in show_md.output
     assert "By @codex" in show_md.output
     assert "### Exciting Feature" in show_md.output
@@ -249,8 +249,8 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     assert "in #42" in show_md.output
     assert "### Fix ingest crash" in show_md.output
     assert "#102" in show_md.output and "#115" in show_md.output
-    assert show_md.output.index("## 💥 Breaking changes") < show_md.output.index("## 🌟 Features")
-    assert show_md.output.index("## 🌟 Features") < show_md.output.index("## 🐞 Bug fixes")
+    assert show_md.output.index("## 💥 Breaking changes") < show_md.output.index("## 🚀 Features")
+    assert show_md.output.index("## 🚀 Features") < show_md.output.index("## 🐞 Bug fixes")
 
     show_md_plain = runner.invoke(
         cli,
@@ -276,7 +276,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     )
     assert show_md_plain.output.index("## Features") < show_md_plain.output.index("## Bug fixes")
     assert "💥" not in show_md_plain.output
-    assert "🌟" not in show_md_plain.output
+    assert "🚀" not in show_md_plain.output
     assert "🐞" not in show_md_plain.output
 
     show_compact = runner.invoke(
@@ -293,7 +293,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
     )
     assert show_compact.exit_code == 0, show_compact.output
     assert "## 💥 Breaking changes" in show_compact.output
-    assert "## 🌟 Features" in show_compact.output
+    assert "## 🚀 Features" in show_compact.output
     assert (
         "- **Remove legacy API**: Removes the deprecated ingest API to prepare for v1."
         " (By @codex)" in show_compact.output
@@ -308,9 +308,9 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         " (By @bob in #102 and #115)" in show_compact.output
     )
     assert show_compact.output.index("## 💥 Breaking changes") < show_compact.output.index(
-        "## 🌟 Features"
+        "## 🚀 Features"
     )
-    assert show_compact.output.index("## 🌟 Features") < show_compact.output.index(
+    assert show_compact.output.index("## 🚀 Features") < show_compact.output.index(
         "## 🐞 Bug fixes"
     )
 
@@ -350,7 +350,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         "## Bug fixes"
     )
     assert "💥" not in show_compact_plain.output
-    assert "🌟" not in show_compact_plain.output
+    assert "🚀" not in show_compact_plain.output
     assert "🐞" not in show_compact_plain.output
 
     show_json = runner.invoke(
@@ -414,7 +414,7 @@ def test_bootstrap_add_and_release(tmp_path: Path) -> None:
         entry for entry in payload_plain["entries"] if entry["title"] == "Exciting Feature"
     )
     assert plain_feature["prs"] == [42]
-    assert all("🌟" not in entry["title"] for entry in payload_plain["entries"])
+    assert all("🚀" not in entry["title"] for entry in payload_plain["entries"])
     assert all("💥" not in entry["title"] for entry in payload_plain["entries"])
 
     validate_result = runner.invoke(
@@ -583,7 +583,7 @@ def test_show_unreleased_token(tmp_path: Path) -> None:
     )
     assert markdown_plain.exit_code == 0, markdown_plain.output
     assert "### Pending Feature" in markdown_plain.output
-    assert "🌟 Pending Feature" not in markdown_plain.output
+    assert "🚀 Pending Feature" not in markdown_plain.output
 
     markdown_dash = runner.invoke(
         cli,

@@ -56,7 +56,7 @@ ENTRY_TYPE_STYLES = {
 }
 ENTRY_TYPE_EMOJIS = {
     "breaking": "💥",
-    "feature": "🌟",
+    "feature": "🚀",
     "bugfix": "🐞",
     "change": "🔧",
 }
