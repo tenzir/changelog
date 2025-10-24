@@ -57,6 +57,7 @@ from .utils import (
     configure_logging,
     console,
     extract_excerpt,
+    format_bold,
     log_debug,
     log_error,
     log_info,
@@ -2214,12 +2215,21 @@ def release_publish_cmd(
         confirmation_action = "gh release create"
 
     if not assume_yes:
-        prompt = (
-            f"Publish {manifest.version} to GitHub repository {config.repository}? "
-            f"This will run '{confirmation_action}'."
-        )
-        log_info(prompt.lower())
-        if not click.confirm(prompt, default=True):
+        prompt_question = f"Publish {manifest.version} to GitHub repository {config.repository}?"
+        log_info(prompt_question.lower())
+        prompt_action = f"This will run {format_bold(confirmation_action)}."
+        log_info(prompt_action.lower())
+        try:
+            confirmed = click.confirm(
+                "",
+                default=True,
+                prompt_suffix="[Y/n]: ",
+                show_default=False,
+            )
+        except click.Abort:
+            log_info("aborted release publish.")
+            return
+        if not confirmed:
             log_info("aborted release publish.")
             return
 

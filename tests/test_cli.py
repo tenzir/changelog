@@ -1285,3 +1285,75 @@ def test_release_publish_updates_existing_release(
     assert publish_result.exit_code == 0, publish_result.output
     assert calls[0][:3] == ["/usr/bin/gh", "release", "view"]
     assert calls[1][:3] == ["/usr/bin/gh", "release", "edit"]
+
+
+def test_release_publish_handles_abort(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    add_entry = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "add",
+            "--title",
+            "Abort Test",
+            "--type",
+            "feature",
+            "--description",
+            "Used to simulate ctrl-c.",
+            "--author",
+            "codex",
+        ],
+    )
+    assert add_entry.exit_code == 0, add_entry.output
+
+    create_release = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "create",
+            "v5.0.0",
+            "--yes",
+        ],
+    )
+    assert create_release.exit_code == 0, create_release.output
+
+    config_path = project_dir / "config.yaml"
+    config_data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config_data["repository"] = "tenzir/example"
+    config_path.write_text(yaml.safe_dump(config_data, sort_keys=False), encoding="utf-8")
+
+    def fake_which(command: str) -> str:
+        assert command == "gh"
+        return "/usr/bin/gh"
+
+    def fake_run(args: list[str], *, check: bool, stdout=None, stderr=None) -> None:
+        if len(args) >= 3 and args[1:3] == ["release", "view"]:
+            return
+        raise AssertionError("gh CLI should not run when publish is aborted")
+
+    def fake_confirm(*args, **kwargs) -> bool:
+        raise click.Abort()
+
+    monkeypatch.setattr("tenzir_changelog.cli.shutil.which", fake_which)
+    monkeypatch.setattr("tenzir_changelog.cli.subprocess.run", fake_run)
+    monkeypatch.setattr("tenzir_changelog.cli.click.confirm", fake_confirm)
+
+    publish_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "publish",
+            "v5.0.0",
+        ],
+    )
+
+    assert publish_result.exit_code == 0, publish_result.output
+    assert "Traceback" not in publish_result.output

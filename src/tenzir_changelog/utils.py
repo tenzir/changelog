@@ -23,6 +23,8 @@ CHECKMARK_PREFIX = f"{CHECKMARK} "
 CROSS_PREFIX = f"{CROSS} "
 INFO_PREFIX = f"{INFO} "
 DEBUG_PREFIX_WITH_SPACE = f"{DEBUG_PREFIX} "
+BOLD = "\033[1m"
+RESET = "\033[0m"
 
 _LOGGER_NAME = "tenzir_changelog"
 _LOGGER = logging.getLogger(_LOGGER_NAME)
@@ -80,6 +82,11 @@ def log_error(message: str) -> None:
 def log_debug(message: str) -> None:
     """Log a debug message with the standardized prefix."""
     _log(DEBUG_PREFIX_WITH_SPACE, message, logging.DEBUG)
+
+
+def format_bold(text: str) -> str:
+    """Return text wrapped in ANSI bold styling."""
+    return f"{BOLD}{text}{RESET}"
 
 
 def render_to_text(renderable: RenderableType) -> str:
