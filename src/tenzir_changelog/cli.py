@@ -1576,11 +1576,9 @@ def _render_release_notes_compact(
         lines.append(f"## {section_title}")
         lines.append("")
         for entry in type_entries:
-            title = entry.metadata.get("title", "Untitled")
             excerpt = extract_excerpt(entry.body)
-            bullet = f"- **{title}**"
-            if excerpt:
-                bullet = f"{bullet}: {excerpt}"
+            bullet_text = excerpt or entry.metadata.get("title", "Untitled")
+            bullet = f"- {bullet_text}"
             author_text, pr_text = _collect_author_pr_text(entry, config)
             suffix_parts: list[str] = []
             if author_text:
@@ -1819,11 +1817,9 @@ def _export_markdown_compact(
         lines.append("")
         for entry in type_entries:
             metadata = entry.metadata
-            title = metadata.get("title", "Untitled")
             excerpt = extract_excerpt(entry.body)
-            bullet = f"- **{title}**"
-            if excerpt:
-                bullet = f"{bullet}: {excerpt}"
+            bullet_text = excerpt or metadata.get("title", "Untitled")
+            bullet = f"- {bullet_text}"
             author_text, pr_text = _collect_author_pr_text(entry, config)
             suffix_parts: list[str] = []
             if author_text:

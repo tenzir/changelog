@@ -164,16 +164,11 @@ def test_add_initializes_and_release(tmp_path: Path) -> None:
     assert first_line == "First stable release.", release_text
     assert "First stable release." in release_text
     assert "## 💥 Breaking changes" in release_text
+    assert "- Removes the deprecated ingest API to prepare for v1. (By @codex)" in release_text
+    assert "- Adds an exciting capability. (By @octocat in #42)" in release_text
     assert (
-        "- **Remove legacy API**: Removes the deprecated ingest API to prepare for v1."
-        " (By @codex)" in release_text
-    )
-    assert (
-        "- **Exciting Feature**: Adds an exciting capability. (By @octocat in #42)" in release_text
-    )
-    assert (
-        "- **Fix ingest crash**: Resolves ingest worker crash when tokens expire."
-        " (By @bob in #102 and #115)" in release_text
+        "- Resolves ingest worker crash when tokens expire. (By @bob in #102 and #115)"
+        in release_text
     )
     assert "## 🚀 Features" in release_text
     assert "## 🐞 Bug fixes" in release_text
@@ -300,18 +295,12 @@ def test_add_initializes_and_release(tmp_path: Path) -> None:
     assert "First stable release." not in get_compact.output
     assert "## 💥 Breaking changes" in get_compact.output
     assert "## 🚀 Features" in get_compact.output
-    assert (
-        "- **Remove legacy API**: Removes the deprecated ingest API to prepare for v1."
-        " (By @codex)" in get_compact.output
-    )
-    assert (
-        "- **Exciting Feature**: Adds an exciting capability."
-        " (By @octocat in #42)" in get_compact.output
-    )
+    assert "- Removes the deprecated ingest API to prepare for v1. (By @codex)" in get_compact.output
+    assert "- Adds an exciting capability. (By @octocat in #42)" in get_compact.output
     assert "## 🐞 Bug fixes" in get_compact.output
     assert (
-        "- **Fix ingest crash**: Resolves ingest worker crash when tokens expire."
-        " (By @bob in #102 and #115)" in get_compact.output
+        "- Resolves ingest worker crash when tokens expire. (By @bob in #102 and #115)"
+        in get_compact.output
     )
     assert get_compact.output.index("## 💥 Breaking changes") < get_compact.output.index(
         "## 🚀 Features"
@@ -334,16 +323,15 @@ def test_add_initializes_and_release(tmp_path: Path) -> None:
     assert "## Breaking changes" in get_compact_plain.output
     assert "## Features" in get_compact_plain.output
     assert (
-        "- **Remove legacy API**: Removes the deprecated ingest API to prepare for v1."
-        " (By @codex)" in get_compact_plain.output
+        "- Removes the deprecated ingest API to prepare for v1. (By @codex)"
+        in get_compact_plain.output
     )
     assert (
-        "- **Exciting Feature**: Adds an exciting capability."
-        " (By @octocat in #42)" in get_compact_plain.output
+        "- Adds an exciting capability. (By @octocat in #42)" in get_compact_plain.output
     )
     assert (
-        "- **Fix ingest crash**: Resolves ingest worker crash when tokens expire."
-        " (By @bob in #102 and #115)" in get_compact_plain.output
+        "- Resolves ingest worker crash when tokens expire. (By @bob in #102 and #115)"
+        in get_compact_plain.output
     )
     assert "## Bug fixes" in get_compact_plain.output
     assert get_compact_plain.output.index("## Breaking changes") < get_compact_plain.output.index(
@@ -554,7 +542,7 @@ def test_compact_export_style_from_config(tmp_path: Path) -> None:
 
     release_notes_path = project_dir / "releases" / "v0.1.0" / "notes.md"
     release_notes = release_notes_path.read_text(encoding="utf-8")
-    assert "- **Compact Feature**: Adds compact defaults." in release_notes
+    assert "- Adds compact defaults." in release_notes
     assert "### Compact Feature" not in release_notes
 
     get_result = runner.invoke(
@@ -569,7 +557,7 @@ def test_compact_export_style_from_config(tmp_path: Path) -> None:
     )
     assert get_result.exit_code == 0, get_result.output
     assert "Alpha release." not in get_result.output
-    assert "- **Compact Feature**: Adds compact defaults." in get_result.output
+    assert "- Adds compact defaults." in get_result.output
 
 
 def test_get_unreleased_token(tmp_path: Path) -> None:
