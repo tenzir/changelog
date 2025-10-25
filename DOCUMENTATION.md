@@ -29,7 +29,8 @@ pipelines all share the same workflow.
    uvx tenzir-changelog show
    ```
    The default table lists every entry with row numbers, making it easy to
-   reference specific items. Inspect a card layout with
+   reference specific items. Row numbers count backward from the newest entry,
+   so `#1` always targets the latest change. Inspect a card layout with
    `uvx tenzir-changelog show -c 1` or export a release via
    `uvx tenzir-changelog show -m v0.2.0`.
 3. Add entries as you prepare pull requests:

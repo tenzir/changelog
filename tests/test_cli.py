@@ -14,7 +14,8 @@ from click.testing import CliRunner
 import yaml
 
 from tenzir_changelog.cli import INFO_PREFIX, cli
-from tenzir_changelog.entries import ENTRY_PREFIX_WIDTH, read_entry
+from tenzir_changelog.config import Config, save_config
+from tenzir_changelog.entries import ENTRY_PREFIX_WIDTH, read_entry, write_entry
 
 
 def test_add_initializes_and_release(tmp_path: Path) -> None:
@@ -527,6 +528,55 @@ def test_missing_project_reports_info_message(tmp_path: Path) -> None:
     )
     assert click.utils.strip_ansi(result.output) == expected_plain_output
     assert "Error:" not in result.output
+
+
+def test_show_orders_rows_oldest_to_newest(tmp_path: Path) -> None:
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    save_config(Config(id="project", name="Project"), project_dir / "config.yaml")
+
+    write_entry(
+        project_dir,
+        {"title": "Oldest", "type": "change", "created": date(2024, 1, 1)},
+        "First body",
+        default_project="project",
+    )
+    write_entry(
+        project_dir,
+        {"title": "Middle", "type": "change", "created": date(2024, 2, 1)},
+        "Second body",
+        default_project="project",
+    )
+    write_entry(
+        project_dir,
+        {"title": "Newest", "type": "change", "created": date(2024, 3, 1)},
+        "Third body",
+        default_project="project",
+    )
+
+    result = runner.invoke(cli, ["--root", str(project_dir), "show"])
+    assert result.exit_code == 0, result.output
+
+    plain_output = click.utils.strip_ansi(result.output)
+    data_rows = [line for line in plain_output.splitlines() if line.startswith("│")]
+    row_numbers = [row.split("│")[1].strip() for row in data_rows]
+    assert row_numbers == ["3", "2", "1"]
+    assert [row.split("│")[4].strip() for row in data_rows] == ["Oldest", "Middle", "Newest"]
+    dates = [row.split("│")[2].strip() for row in data_rows]
+    assert dates == sorted(dates)
+
+    newest_card = runner.invoke(cli, ["--root", str(project_dir), "show", "-c", "1"])
+    assert newest_card.exit_code == 0, newest_card.output
+    newest_plain = click.utils.strip_ansi(newest_card.output)
+    assert "Newest" in newest_plain
+    assert "Middle" not in newest_plain
+    assert "Oldest" not in newest_plain
+
+    oldest_card = runner.invoke(cli, ["--root", str(project_dir), "show", "-c", "3"])
+    assert oldest_card.exit_code == 0, oldest_card.output
+    oldest_plain = click.utils.strip_ansi(oldest_card.output)
+    assert "Oldest" in oldest_plain
 
 
 def test_compact_export_style_from_config(tmp_path: Path) -> None:

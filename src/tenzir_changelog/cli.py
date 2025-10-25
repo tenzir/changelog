@@ -506,7 +506,7 @@ def _sort_entries_for_display(
     release_index: dict[str, list[str]],
     release_order: dict[str, int],
 ) -> list[Entry]:
-    """Sort entries by release recency first, then date."""
+    """Sort entries so the newest entry ends up last in the table view."""
     entries_list = list(entries)
     fallback_rank = len(release_order) + 1
 
@@ -521,7 +521,8 @@ def _sort_entries_for_display(
         created_ord = created.toordinal()
         return (release_rank, -created_ord, -entry.sequence, entry.entry_id)
 
-    return sorted(entries_list, key=sort_key)
+    sorted_desc = sorted(entries_list, key=sort_key)
+    return list(reversed(sorted_desc))
 
 
 def _entry_release_group(
@@ -675,7 +676,9 @@ def _render_entries(
         sorted_entries = sort_entries_desc(list(entries))
         release_groups = [None] * len(sorted_entries)
 
-    for row_num, entry in enumerate(sorted_entries, start=1):
+    total_rows = len(sorted_entries)
+
+    for index, entry in enumerate(sorted_entries):
         metadata = entry.metadata
         created_display = entry.created_at.isoformat() if entry.created_at else "—"
         type_value = metadata.get("type", "change")
@@ -688,7 +691,11 @@ def _render_entries(
         type_display = Text(glyph, style=ENTRY_TYPE_STYLES.get(type_value, ""))
         row: list[RenderableType] = []
         if "num" in visible_columns:
-            row.append(str(row_num))
+            if release_order is not None:
+                display_row_num = total_rows - index
+            else:
+                display_row_num = index + 1
+            row.append(str(display_row_num))
         if "date" in visible_columns:
             row.append(created_display)
         if "version" in visible_columns:
@@ -712,9 +719,9 @@ def _render_entries(
         if "id" in visible_columns:
             row.append(_ellipsis_cell(entry.entry_id, "id", column_specs, style="cyan"))
         end_section = False
-        if release_order is not None and row_num - 1 < len(sorted_entries) - 1:
-            current_group = release_groups[row_num - 1]
-            next_group = release_groups[row_num]
+        if release_order is not None and index < len(sorted_entries) - 1:
+            current_group = release_groups[index]
+            next_group = release_groups[index + 1]
             if current_group != next_group:
                 end_section = True
 
@@ -980,9 +987,10 @@ def _resolve_identifier(
         if "row" not in allowed:
             raise click.ClickException("Row numbers are not supported by this command.")
         if 1 <= row_num <= len(sorted_entries):
+            index = len(sorted_entries) - row_num
             return IdentifierResolution(
                 kind="row",
-                entries=[sorted_entries[row_num - 1]],
+                entries=[sorted_entries[index]],
                 identifier=token,
             )
         raise click.ClickException(
