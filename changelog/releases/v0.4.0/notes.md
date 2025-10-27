@@ -1,0 +1,53 @@
+## 💥 Breaking changes
+
+### Invert show table order
+
+`tenzir-changelog show` now renders the primary changelog table with
+backward-counting row numbers, so `#1` consistently targets the newest change
+while older entries climb toward the top.
+
+The command also subsumes the old `list`/`export` split: use the default view
+for the numbered table, `-c/--card` for rich panels, or `-m/--markdown` /
+`-j/--json` to export releases, the unreleased bucket, or ad-hoc selections.
+
+```sh
+# Browse every entry with numbered rows
+uvx tenzir-changelog show
+
+# Inspect a specific change as a card
+uvx tenzir-changelog show -c 2
+
+# Export an entire release (compact bullets optional)
+uvx tenzir-changelog show -m v0.2.0
+```
+
+Cards highlight metadata, release status, and formatted Markdown together, so
+you can review and share entry details without juggling multiple commands.
+
+*By @mavam and @claude in [#1](https://github.com/tenzir/changelog/pull/1).*
+
+## 🚀 Features
+
+### Add components to changelog entries
+
+Entries can now record an optional `component` tag (for example `cli`, `docs`, or `ci`). If you skip the field—as we do in this repository—the CLI behaves exactly as before. When a component is present, `tenzir-changelog show` adds a dedicated column, release notes surface the label, and Markdown/JSON exports include the value.
+
+Projects that want per-component slices can pass `--component <name>` to `tenzir-changelog add` and reuse the same flag on `show` when filtering a backlog or exporting a release.
+
+Finally, the table view only renders the Component column when at least one entry in the result set uses the feature, keeping homogeneous changelog streams clutter-free.
+
+*By @codex.*
+
+### Support tagging during release publish
+
+Add a `--tag` flag to `release publish` so the command can create the annotated Git tag before invoking the GitHub workflow, logging a warning and skipping creation when the tag already exists.
+
+*By @codex.*
+
+## 🔧 Changes
+
+### Polish release creation output
+
+The release creation summary now shows the familiar emoji table alongside an inline list that reuses our logger glyphs, making it quicker to scan entries and confirm what will happen when finalizing a release.
+
+*By @codex.*
