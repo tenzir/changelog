@@ -53,12 +53,14 @@ from .releases import (
 )
 from .validate import run_validation
 from .utils import (
-    INFO_PREFIX,
     CHECKMARK,
     CROSS,
+    INFO_PREFIX,
     WARNING,
+    create_annotated_git_tag,
     configure_logging,
     console,
+    emit_output,
     extract_excerpt,
     format_bold,
     log_debug,
@@ -66,11 +68,10 @@ from .utils import (
     log_info,
     log_success,
     log_warning,
-    create_annotated_git_tag,
+    normalize_markdown,
     push_current_branch,
     push_git_tag,
     slugify,
-    emit_output,
 )
 
 __all__ = ["cli", "INFO_PREFIX"]
@@ -1783,7 +1784,10 @@ def _render_release_notes(
                 lines.append(author_line)
                 lines.append("")
 
-    return "\n".join(lines).strip()
+    if not lines:
+        return ""
+    raw = "\n".join(lines).strip()
+    return normalize_markdown(raw)
 
 
 def _render_release_notes_compact(
@@ -1829,7 +1833,10 @@ def _render_release_notes_compact(
             lines.append(bullet)
         lines.append("")
 
-    return "\n".join(lines).strip()
+    if not lines:
+        return ""
+    raw = "\n".join(lines).strip()
+    return normalize_markdown(raw)
 
 
 def _compose_release_document(
@@ -1849,7 +1856,10 @@ def _compose_release_document(
     notes = release_notes.strip()
     if notes:
         parts.append(notes)
-    return "\n\n".join(parts).strip()
+    if not parts:
+        return ""
+    raw = "\n\n".join(parts)
+    return normalize_markdown(raw)
 
 
 def _release_entry_sort_key(entry: Entry) -> tuple[str, str]:
@@ -2557,7 +2567,11 @@ def _export_markdown_release(
                 lines.append(author_line)
                 lines.append("")
 
-    return "\n".join(lines).strip() + "\n"
+    if not lines:
+        return ""
+    raw = "\n".join(lines).strip()
+    normalized = normalize_markdown(raw)
+    return f"{normalized}\n"
 
 
 def _export_markdown_compact(
@@ -2615,7 +2629,11 @@ def _export_markdown_compact(
             lines.append(bullet)
         lines.append("")
 
-    return "\n".join(lines).strip() + "\n"
+    if not lines:
+        return ""
+    raw = "\n".join(lines).strip()
+    normalized = normalize_markdown(raw)
+    return f"{normalized}\n"
 
 
 def _export_json_payload(

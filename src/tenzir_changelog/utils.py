@@ -11,6 +11,7 @@ from pathlib import Path
 from collections.abc import Iterable as IterableABC
 from typing import Iterable, Optional, cast
 
+import mdformat
 from rich.console import Console, RenderableType
 from rich.style import Style
 from rich.theme import Theme
@@ -208,6 +209,14 @@ def extract_excerpt(text: str) -> str:
     first_paragraph, *_ = re.split(r"\n\s*\n", stripped, maxsplit=1)
     collapsed = re.sub(r"\s*\n\s*", " ", first_paragraph.strip())
     return collapsed.strip()
+
+
+def normalize_markdown(text: str) -> str:
+    """Return Markdown with paragraphs normalized to single lines."""
+    if not text.strip():
+        return ""
+    formatted = mdformat.text(text, options={"wrap": "no"})
+    return formatted.rstrip("\n")
 
 
 def create_annotated_git_tag(project_root: Path, tag_name: str, message: str) -> bool:

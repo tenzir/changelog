@@ -2,13 +2,9 @@
 
 ### Invert show table order
 
-`tenzir-changelog show` now renders the primary changelog table with
-backward-counting row numbers, so `#1` consistently targets the newest change
-while older entries climb toward the top.
+`tenzir-changelog show` now renders the primary changelog table with backward-counting row numbers, so `#1` consistently targets the newest change while older entries climb toward the top.
 
-The command also subsumes the old `list`/`export` split: use the default view
-for the numbered table, `-c/--card` for rich panels, or `-m/--markdown` /
-`-j/--json` to export releases, the unreleased bucket, or ad-hoc selections.
+The command also subsumes the old `list`/`export` split: use the default view for the numbered table, `-c/--card` for rich panels, or `-m/--markdown` / `-j/--json` to export releases, the unreleased bucket, or ad-hoc selections.
 
 ```sh
 # Browse every entry with numbered rows
@@ -21,8 +17,7 @@ uvx tenzir-changelog show -c 2
 uvx tenzir-changelog show -m v0.2.0
 ```
 
-Cards highlight metadata, release status, and formatted Markdown together, so
-you can review and share entry details without juggling multiple commands.
+Cards highlight metadata, release status, and formatted Markdown together, so you can review and share entry details without juggling multiple commands.
 
 *By @mavam and @claude in [#1](https://github.com/tenzir/changelog/pull/1).*
 

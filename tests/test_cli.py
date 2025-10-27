@@ -1042,6 +1042,46 @@ def test_release_create_appends_entries(tmp_path: Path) -> None:
     assert "Gamma Change" in notes_text
 
 
+def test_release_notes_collapse_soft_breaks(tmp_path: Path) -> None:
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    save_config(Config(id="project", name="Project"), project_dir / "config.yaml")
+
+    metadata = {
+        "title": "Invert show table order",
+        "type": "breaking",
+        "authors": ["codex"],
+    }
+    body = (
+        "`tenzir-changelog show` now renders the primary changelog table with\n"
+        "backward-counting row numbers, so `#1` consistently targets the newest change\n"
+        "while older entries climb toward the top.\n"
+    )
+    write_entry(project_dir, metadata, body, default_project="project")
+
+    create_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "create",
+            "v0.1.0",
+            "--description",
+            "Test release.",
+            "--yes",
+        ],
+    )
+    assert create_result.exit_code == 0, create_result.output
+
+    notes_path = project_dir / "releases" / "v0.1.0" / "notes.md"
+    assert notes_path.exists()
+    notes_text = notes_path.read_text(encoding="utf-8")
+    assert "table with backward-counting row numbers" in notes_text
+    assert "table with\nbackward-counting" not in notes_text
+
+
 def test_release_create_semver_bumps(tmp_path: Path) -> None:
     runner = CliRunner()
     project_dir = tmp_path / "project"
