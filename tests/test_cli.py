@@ -1569,6 +1569,17 @@ def test_release_publish_creates_git_tag(tmp_path: Path) -> None:
         cwd=project_dir,
         check=True,
     )
+    remote_dir = tmp_path / "remote.git"
+    subprocess.run(
+        ["git", "init", "--bare", str(remote_dir)],
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    subprocess.run(
+        ["git", "remote", "add", "origin", str(remote_dir)],
+        cwd=project_dir,
+        check=True,
+    )
     (project_dir / "README.md").write_text("hello\n", encoding="utf-8")
     subprocess.run(["git", "add", "README.md"], cwd=project_dir, check=True)
     subprocess.run(
@@ -1642,6 +1653,18 @@ def test_release_publish_creates_git_tag(tmp_path: Path) -> None:
     )
 
     assert publish_result.exit_code == 0, publish_result.output
+    publish_plain = click.utils.strip_ansi(publish_result.output)
+    branch_result = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=project_dir,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    branch_name = branch_result.stdout.strip()
+    assert branch_name
+    assert f"pushed branch {branch_name} to remote origin/{branch_name}." in publish_plain
+    assert "pushed git tag v9.9.9 to remote origin." in publish_plain
 
     tag_result = subprocess.run(
         ["git", "tag", "--list", "v9.9.9"],
@@ -1669,6 +1692,17 @@ def test_release_publish_skips_existing_tag(tmp_path: Path) -> None:
     )
     subprocess.run(
         ["git", "config", "user.name", "Codex"],
+        cwd=project_dir,
+        check=True,
+    )
+    remote_dir = tmp_path / "remote.git"
+    subprocess.run(
+        ["git", "init", "--bare", str(remote_dir)],
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    subprocess.run(
+        ["git", "remote", "add", "origin", str(remote_dir)],
         cwd=project_dir,
         check=True,
     )
@@ -1752,6 +1786,17 @@ def test_release_publish_skips_existing_tag(tmp_path: Path) -> None:
 
     publish_plain = click.utils.strip_ansi(publish_result.output)
     assert "git tag v9.9.9 already exists; skipping creation." in publish_plain
+    branch_result = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=project_dir,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    branch_name = branch_result.stdout.strip()
+    assert branch_name
+    assert f"pushed branch {branch_name} to remote origin/{branch_name}." in publish_plain
+    assert "pushed git tag v9.9.9 to remote origin." in publish_plain
 
     gh_calls = gh_log.read_text(encoding="utf-8").strip().splitlines()
     assert any(line.startswith("release create v9.9.9") for line in gh_calls)

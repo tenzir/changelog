@@ -67,6 +67,8 @@ from .utils import (
     log_success,
     log_warning,
     create_annotated_git_tag,
+    push_current_branch,
+    push_git_tag,
     slugify,
     emit_output,
 )
@@ -2411,6 +2413,18 @@ def release_publish_cmd(
             log_success(f"created git tag {manifest.version}.")
         else:
             log_warning(f"git tag {manifest.version} already exists; skipping creation.")
+        try:
+            branch_remote, branch_remote_ref, branch_name = push_current_branch(
+                project_root, config.repository
+            )
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from exc
+        log_success(f"pushed branch {branch_name} to remote {branch_remote}/{branch_remote_ref}.")
+        try:
+            remote_name = push_git_tag(project_root, manifest.version, config.repository)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from exc
+        log_success(f"pushed git tag {manifest.version} to remote {remote_name}.")
 
     release_exists = _github_release_exists(config.repository, manifest.version, gh_path)
     if release_exists:

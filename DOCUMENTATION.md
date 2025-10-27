@@ -103,9 +103,10 @@ Create a new change entry in `unreleased/`. Highlights:
   `config.yaml` for the target repository slug, validates that `notes.md`
   exists, and shells out to `gh release create ... --notes-file notes.md`.
   Pass `--draft`, `--prerelease`, `--tag`, and `--yes` to control the publication
-  flow. When `--tag` is present, the CLI creates an annotated `git tag -a
-  <version> -m "Release <version>"` before invoking `gh`, logging a warning and
-  leaving the repository untouched when the tag already exists.
+  flow. When `--tag` is present, the CLI pushes the current branch, creates an
+  annotated `git tag -a <version> -m "Release <version>"`, pushes both to the
+  matching remote, and logs a warning instead of recreating the tag when it
+  already exists locally.
 
 - **`tenzir-changelog validate`**
   Run structural checks across entry files, release manifests, and exported

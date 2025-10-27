@@ -245,3 +245,132 @@ def create_annotated_git_tag(project_root: Path, tag_name: str, message: str) ->
             f"git failed to create tag '{tag_name}' (exit status {exc.returncode})."
         ) from exc
     return True
+
+
+def _select_remote_name(project_root: Path, repository: str | None) -> str:
+    """Return the git remote name matching the configured repository."""
+    try:
+        result = subprocess.run(
+            ["git", "remote", "-v"],
+            cwd=str(project_root),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "git is required to push release tags but was not found in PATH."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError("failed to list git remotes.") from exc
+
+    remotes: dict[str, list[str]] = {}
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        name, url, _kind = parts[0], parts[1], parts[2]
+        remotes.setdefault(name, []).append(url)
+
+    if not remotes:
+        raise RuntimeError("no git remotes configured; cannot push release tags.")
+
+    if repository:
+        for remote_name, urls in remotes.items():
+            for url in urls:
+                if repository in url:
+                    return remote_name
+
+    if "origin" in remotes:
+        return "origin"
+
+    # Fallback to first configured remote for completeness.
+    return next(iter(remotes))
+
+
+def _current_branch(project_root: Path) -> Optional[str]:
+    """Return the current branch name if HEAD is not detached."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(project_root),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    branch = result.stdout.strip()
+    if not branch or branch == "HEAD":
+        return None
+    return branch
+
+
+def _upstream_branch(project_root: Path) -> Optional[tuple[str, str]]:
+    """Return the configured upstream as (remote, branch)."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+            cwd=str(project_root),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    upstream = result.stdout.strip()
+    if not upstream or "/" not in upstream:
+        return None
+    remote_name, _, branch_name = upstream.partition("/")
+    if not remote_name or not branch_name:
+        return None
+    return remote_name, branch_name
+
+
+def push_current_branch(project_root: Path, repository: str | None = None) -> tuple[str, str, str]:
+    """Push the current branch to its upstream (or configured) remote."""
+    branch = _current_branch(project_root)
+    if not branch:
+        raise RuntimeError(
+            "cannot push the current branch because HEAD is detached. "
+            "check out a branch before publishing the release."
+        )
+
+    upstream = _upstream_branch(project_root)
+    if upstream:
+        remote_name, remote_branch = upstream
+    else:
+        remote_name = _select_remote_name(project_root, repository)
+        remote_branch = branch
+
+    try:
+        subprocess.run(
+            ["git", "push", remote_name, f"{branch}:{remote_branch}"],
+            cwd=str(project_root),
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            "git failed to push branch "
+            f"'{branch}' to remote '{remote_name}/{remote_branch}' "
+            f"(exit status {exc.returncode})."
+        ) from exc
+    return remote_name, remote_branch, branch
+
+
+def push_git_tag(project_root: Path, tag_name: str, repository: str | None = None) -> str:
+    """Push the provided git tag to the matching remote and return the remote name."""
+    remote_name = _select_remote_name(project_root, repository)
+    try:
+        subprocess.run(
+            ["git", "push", remote_name, tag_name],
+            cwd=str(project_root),
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            "git failed to push tag "
+            f"'{tag_name}' to remote '{remote_name}' "
+            f"(exit status {exc.returncode})."
+        ) from exc
+    return remote_name

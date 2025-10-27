@@ -107,7 +107,11 @@ Releases use trusted publishing from GitHub Actions. When ready:
    ```
 2. Draft the release manifest and move unreleased entries:
    ```sh
-   uv run tenzir-changelog --root changelog release create vX.Y.Z --description "Summary" --compact --yes
+   uv run tenzir-changelog \
+     --root changelog \
+     release create vX.Y.Z \
+     --description "Summary"  \
+     --yes
    uv run tenzir-changelog --root changelog validate
    ```
    You can provide additional context via `--intro-file` instead of editing files
@@ -126,14 +130,11 @@ Releases use trusted publishing from GitHub Actions. When ready:
    ```sh
    uv run tenzir-changelog --root changelog release publish vX.Y.Z --tag --yes
    ```
-   Add `--draft` or `--prerelease` when you need staged releases. If the tag
-   already exists, the command keeps it and emits a warning before publishing.
-6. Push commits and tags:
-   ```sh
-   git push
-   git push --tags
-   ```
-7. Draft and publish a GitHub release describing highlights if additional context is helpful.
+   Add `--draft` or `--prerelease` when you need staged releases. The command
+   pushes the current branch, creates the annotated tag, and pushes both to the
+   remote automatically, emitting a warning when the tag already exists locally.
+6. Draft and publish a GitHub release describing highlights if additional
+   context is helpful.
 
 Publishing the release triggers the automated workflow that builds, validates,
 and uploads artifacts to PyPI before smoke-testing the package.
