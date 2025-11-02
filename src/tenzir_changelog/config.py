@@ -42,8 +42,6 @@ class Config:
     name: str
     description: str = ""
     repository: str | None = None
-    intro_template: str | None = None
-    assets_dir: str | None = None
     export_style: ExportStyle = EXPORT_STYLE_STANDARD
     components: tuple[str, ...] = ()
 
@@ -66,9 +64,6 @@ def load_config(path: Path) -> Config:
     name_raw = raw.get("name", project_value)
     description_raw = raw.get("description", "")
     repository_raw = raw.get("repository")
-    intro_template_raw = raw.get("intro_template")
-    assets_dir_raw = raw.get("assets_dir")
-
     export_style_raw = raw.get("export_style")
     export_style: ExportStyle = EXPORT_STYLE_STANDARD
     if export_style_raw is not None:
@@ -87,8 +82,6 @@ def load_config(path: Path) -> Config:
         name=str(name_raw or "Unnamed Project"),
         description=str(description_raw or ""),
         repository=(str(repository_raw) if repository_raw else None),
-        intro_template=(str(intro_template_raw) if intro_template_raw else None),
-        assets_dir=(str(assets_dir_raw) if assets_dir_raw else None),
         export_style=export_style,
         components=components,
     )
@@ -112,9 +105,6 @@ def load_package_config(path: Path) -> Config:
 
     description_raw = raw.get("description", "")
     repository_raw = raw.get("repository")
-    intro_template_raw = raw.get("intro_template")
-    assets_dir_raw = raw.get("assets_dir")
-
     export_style_raw = raw.get("export_style")
     export_style: ExportStyle = EXPORT_STYLE_STANDARD
     if export_style_raw is not None:
@@ -133,8 +123,6 @@ def load_package_config(path: Path) -> Config:
         name=package_name,
         description=str(description_raw or ""),
         repository=(str(repository_raw) if repository_raw else None),
-        intro_template=(str(intro_template_raw) if intro_template_raw else None),
-        assets_dir=(str(assets_dir_raw) if assets_dir_raw else None),
         export_style=export_style,
         components=components,
     )
@@ -166,10 +154,6 @@ def dump_config(config: Config) -> dict[str, Any]:
         data["description"] = config.description
     if config.repository:
         data["repository"] = config.repository
-    if config.intro_template:
-        data["intro_template"] = config.intro_template
-    if config.assets_dir:
-        data["assets_dir"] = config.assets_dir
     if config.export_style != EXPORT_STYLE_STANDARD:
         data["export_style"] = config.export_style
     if config.components:
