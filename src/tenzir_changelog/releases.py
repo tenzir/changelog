@@ -37,13 +37,18 @@ RELEASE_DIR = Path("releases")
 
 @dataclass
 class ReleaseManifest:
-    """Representation of a release manifest."""
+    """Representation of a release manifest.
+
+    The manifest contains a single free-form `intro` field which may include
+    a one-line summary and additional introductory Markdown. Older manifests
+    used a `description` field; we continue to read it for compatibility but
+    only write `intro` going forward.
+    """
 
     version: str
     created: date
     entries: list[str] = field(default_factory=list)
     title: str = ""
-    description: str = ""
     intro: str | None = None
     path: Path | None = None
 
@@ -70,8 +75,10 @@ def iter_release_manifests(project_root: Path) -> Iterable[ReleaseManifest]:
     for path in manifest_paths:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
-        raw_description = str(data.get("description", "") or "").strip()
+        # Prefer `intro`; fall back to legacy `description` if present.
         raw_intro = str(data.get("intro", "") or "").strip()
+        if not raw_intro:
+            raw_intro = str(data.get("description", "") or "").strip()
         created_value = _parse_created_date(data.get("created"))
 
         version_value = data.get("version") or path.parent.name
@@ -85,7 +92,6 @@ def iter_release_manifests(project_root: Path) -> Iterable[ReleaseManifest]:
             version=str(version_value),
             created=created_value,
             title=title_value,
-            description=raw_description,
             intro=raw_intro or None,
             path=path,
         )
@@ -118,11 +124,9 @@ def serialize_release_manifest(manifest: ReleaseManifest) -> str:
     }
     if manifest.title:
         payload["title"] = manifest.title
-    if manifest.description:
-        # Always emit description using a folded block scalar (">").
-        payload["description"] = _FoldedString(manifest.description)
     if manifest.intro:
-        payload["intro"] = manifest.intro
+        # Emit `intro` using a folded block scalar for readability.
+        payload["intro"] = _FoldedString(manifest.intro)
     # Use default wrapping width for readability; preserve key order.
     return yaml.safe_dump(payload, sort_keys=False)
 

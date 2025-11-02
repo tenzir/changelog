@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date, datetime
 from importlib.metadata import PackageNotFoundError, version as metadata_version
 from pathlib import Path
@@ -958,8 +958,8 @@ def _render_release(
     header = Text.assemble(
         ("Title: ", "bold"),
         manifest.title or manifest.version or "—",
-        ("\nDescription: ", "bold"),
-        manifest.description or "—",
+        ("\nIntro: ", "bold"),
+        ("present" if (manifest.intro and manifest.intro.strip()) else "—"),
         ("\nCreated: ", "bold"),
         manifest.created.isoformat(),
         ("\nProject: ", "bold"),
@@ -1735,11 +1735,7 @@ def _show_entries_export(
     manifest_for_export: ReleaseManifest | None = None
 
     if len(resolutions) == 1 and resolutions[0].kind == "release":
-        manifest = resolutions[0].manifest
-        if manifest is not None and manifest.description:
-            manifest_for_export = replace(manifest, description="")
-        else:
-            manifest_for_export = manifest
+        manifest_for_export = resolutions[0].manifest
 
     ordered_entries: dict[str, Entry] = {}
     for resolution in resolutions:
@@ -2299,15 +2295,10 @@ def _render_release_notes_compact(
 
 
 def _compose_release_document(
-    description: Optional[str],
     intro: Optional[str],
     release_notes: str,
 ) -> str:
     parts: list[str] = []
-    if description:
-        desc = description.strip()
-        if desc:
-            parts.append(desc)
     if intro:
         intro_text = intro.strip()
         if intro_text:
@@ -2473,12 +2464,12 @@ def _create_multi_project_release(
             created=date.today(),
             entries=[entry.entry_id for entry in entries_sorted],
             title=f"{config.name} {version}",
-            description="",
+            intro=None,
         )
 
         # Render release notes (use standard format for multi-project)
         release_notes = _render_release_notes(entries_sorted, config, include_emoji=True)
-        readme_content = _compose_release_document(None, None, release_notes)
+        readme_content = _compose_release_document(None, release_notes)
 
         # Write manifest and notes
         write_release_manifest(project_root, manifest, readme_content, overwrite=False)
@@ -2501,7 +2492,7 @@ def _create_multi_project_release(
 @release_group.command("create")
 @click.argument("version", required=False)
 @click.option("--title", help="Display title for the release.")
-@click.option("--description", help="Short release description.")
+@click.option("--intro", "intro_text", help="Short release introduction.")
 @click.option(
     "--date",
     "release_date",
@@ -2548,7 +2539,7 @@ def release_create_cmd(
     ctx: CLIContext,
     version: Optional[str],
     title: Optional[str],
-    description: Optional[str],
+    intro_text: Optional[str],
     release_date: Optional[datetime],
     intro_file: Optional[Path],
     compact: Optional[bool],
@@ -2651,17 +2642,15 @@ def release_create_cmd(
         if existing_manifest
         else f"{config.name} {version}"
     )
-    description_value = (
-        description.strip()
-        if description is not None
-        else (existing_manifest.description if existing_manifest else "")
-    )
-
-    manifest_intro: Optional[str]
-    if intro_file:
-        manifest_intro = intro_file.read_text(encoding="utf-8").strip()
-    elif existing_manifest:
-        manifest_intro = existing_manifest.intro
+    # Validate mutually exclusive intro sources and resolve intro.
+    if intro_text and intro_file:
+        raise click.ClickException("Use only one of --intro or --intro-file, not both.")
+    if intro_text is not None:
+        manifest_intro: Optional[str] = intro_text.strip() or None
+    elif intro_file:
+        manifest_intro = intro_file.read_text(encoding="utf-8").strip() or None
+    elif existing_manifest and existing_manifest.intro:
+        manifest_intro = existing_manifest.intro.strip() or None
     else:
         manifest_intro = None
 
@@ -2686,12 +2675,10 @@ def release_create_cmd(
         if existing_notes_payload is not None:
             normalized_existing = existing_notes_payload.rstrip("\n")
             doc_standard = _compose_release_document(
-                description_value if description_value else None,
                 manifest_intro,
                 release_notes_standard,
             ).rstrip("\n")
             doc_compact = _compose_release_document(
-                description_value if description_value else None,
                 manifest_intro,
                 release_notes_compact,
             ).rstrip("\n")
@@ -2713,15 +2700,10 @@ def release_create_cmd(
         created=release_dt,
         entries=[entry.entry_id for entry in entries_sorted],
         title=release_title or "",
-        description=description_value or "",
         intro=manifest_intro or None,
     )
 
-    readme_content = _compose_release_document(
-        manifest.description,
-        manifest.intro,
-        release_notes,
-    )
+    readme_content = _compose_release_document(manifest.intro, release_notes)
 
     manifest_payload = serialize_release_manifest(manifest)
     manifest_exists = manifest_path.exists()
@@ -2878,7 +2860,6 @@ def release_notes_cmd(
             else _render_release_notes(entries_for_output, config, include_emoji=include_emoji)
         )
         output = _compose_release_document(
-            manifest.description if manifest else "",
             manifest.intro if manifest else None,
             release_body,
         )
@@ -3081,11 +3062,7 @@ def _export_markdown_release(
     fallback_heading: str = "Unreleased Changes",
 ) -> str:
     lines: list[str] = []
-    if manifest:
-        if manifest.description:
-            lines.append(manifest.description.strip())
-            lines.append("")
-    else:
+    if not manifest:
         heading = fallback_heading or "Unreleased Changes"
         lines.append(f"# {heading}")
         lines.append("")
@@ -3140,11 +3117,7 @@ def _export_markdown_compact(
     fallback_heading: str = "Unreleased Changes",
 ) -> str:
     lines: list[str] = []
-    if manifest:
-        if manifest.description:
-            lines.append(manifest.description.strip())
-            lines.append("")
-    else:
+    if not manifest:
         heading = fallback_heading or "Unreleased Changes"
         lines.append(f"# {heading}")
         lines.append("")
@@ -3218,7 +3191,7 @@ def _export_json_payload(
             {
                 "version": manifest.version,
                 "title": manifest.title or manifest.version,
-                "description": manifest.description or None,
+                "intro": manifest.intro or None,
                 "project": config.id,
                 "created": manifest.created.isoformat(),
             }
@@ -3229,7 +3202,7 @@ def _export_json_payload(
             {
                 "version": None,
                 "title": fallback_heading if fallback_heading else None,
-                "description": None,
+                "intro": None,
                 "project": config.id,
                 "created": created_value.isoformat(),
             }

@@ -110,7 +110,7 @@ Releases use trusted publishing from GitHub Actions. When ready:
    uv run tenzir-changelog \
      --root changelog \
      release create vX.Y.Z \
-     --description "Summary"  \
+     --intro "Summary" \
      --yes
    uv run tenzir-changelog --root changelog validate
    ```
