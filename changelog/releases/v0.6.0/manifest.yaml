@@ -1,0 +1,5 @@
+created: 2025-11-02
+title: Changelog v0.6.0
+intro: >-
+  Refine release manifest format: rename 'description' to 'intro' and render it with
+  a folded YAML block for better readability.
