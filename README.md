@@ -29,12 +29,12 @@ caches the result for snappy subsequent invocations.
 
 ## 📚 Documentation
 
-- [User guide](DOCUMENTATION.md) — CLI walkthroughs, configuration concepts, and
-  a hands-on tutorial.
-- [Development guide](DEVELOPMENT.md) — local workflows, quality gates, and
+- [User Reference](https://docs.tenzir.com/reference/changelog-framework):
+  Concise description of concepts and abstractions.
+- [Development guide](DEVELOPMENT.md): Local workflows, quality gates, and
   release procedures for maintainers.
 
-## 🧪 Dogfooded Project
+## 🐶 Dogfooded Project
 
 The repository ships with `changelog/`, the real changelog project maintained
 by the Tenzir team. Explore it to see how `config.yaml`, `unreleased/`, and
