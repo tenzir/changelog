@@ -4,6 +4,10 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to publish (e.g., v0.7.0)."
+        required: true
 
 permissions:
   contents: read
@@ -76,5 +80,24 @@ jobs:
       - name: Wait for package availability
         run: sleep 30
 
-      - name: Test installation from PyPI
-        run: uvx tenzir-changelog --help
+      - name: Determine expected version
+        id: expected-version
+        run: |
+          tag="${{ github.event.release.tag_name || inputs.version }}"
+          if [ -z "$tag" ]; then
+            echo "Unable to determine release tag." >&2
+            exit 1
+          fi
+          version="${tag#v}"
+          echo "expected_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "expected_version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify published version
+        env:
+          EXPECTED_VERSION: ${{ steps.expected-version.outputs.expected_version }}
+        run: |
+          installed_version="$(uvx tenzir-changelog --version | tr -d '\r')"
+          if [ "$installed_version" != "$EXPECTED_VERSION" ]; then
+            echo "Expected version $EXPECTED_VERSION but received $installed_version." >&2
+            exit 1
+          fi

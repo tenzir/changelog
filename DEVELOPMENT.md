@@ -138,6 +138,8 @@ Releases use trusted publishing from GitHub Actions. When ready:
 
 Publishing the release triggers the automated workflow that builds, validates,
 and uploads artifacts to PyPI before smoke-testing the package.
+The verify job also checks that `uvx tenzir-changelog --version` matches the
+release tag so mismatched tags fail fast.
 
 ## Pull Requests
 
