@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from importlib.metadata import PackageNotFoundError, version as metadata_version
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional, TypedDict, Literal, cast
+from typing import Any, Iterable, Mapping, Optional, Sequence, TypedDict, Literal, cast
 
 import click
 from click.core import ParameterSource
@@ -83,7 +83,19 @@ from .utils import (
     slugify,
 )
 
-__all__ = ["cli", "INFO_PREFIX"]
+__all__ = [
+    "cli",
+    "INFO_PREFIX",
+    "CLIContext",
+    "ShowView",
+    "create_cli_context",
+    "run_show_entries",
+    "create_entry",
+    "create_release",
+    "render_release_notes",
+    "publish_release",
+    "run_validate",
+]
 
 VERSION_FLAGS = {"--version", "-V"}
 
@@ -582,6 +594,44 @@ def _mask_comment_block(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def create_cli_context(
+    *,
+    roots: Sequence[Path] | None = None,
+    config: Optional[Path] = None,
+    debug: bool = False,
+) -> CLIContext:
+    """Return a CLIContext using the same resolution logic as the CLI entry point."""
+
+    configure_logging(debug)
+    root_candidates = list(roots or [])
+
+    if len(root_candidates) == 0:
+        root = _resolve_project_root(Path("."))
+        config_path = config.resolve() if config else default_config_path(root)
+        log_debug(f"resolved project root: {root}")
+        log_debug(f"using config path: {config_path}")
+        return CLIContext(project_root=root, config_path=config_path)
+
+    if len(root_candidates) == 1:
+        root = _resolve_project_root(root_candidates[0])
+        config_path = config.resolve() if config else default_config_path(root)
+        log_debug(f"resolved project root: {root}")
+        log_debug(f"using config path: {config_path}")
+        return CLIContext(project_root=root, config_path=config_path)
+
+    if config is not None:
+        log_warning("--config option is ignored in multi-project mode")
+    resolved_roots = [_resolve_project_root(root_candidate) for root_candidate in root_candidates]
+    log_debug(f"multi-project mode with roots: {resolved_roots}")
+    primary_root = resolved_roots[0]
+    primary_config_path = default_config_path(primary_root)
+    return CLIContext(
+        project_root=primary_root,
+        config_path=primary_config_path,
+        project_roots=resolved_roots,
+    )
+
+
 @click.group(invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--root",
@@ -604,37 +654,8 @@ def _mask_comment_block(text: str) -> str:
 @click.pass_context
 def cli(ctx: click.Context, roots: tuple[Path, ...], config: Optional[Path], debug: bool) -> None:
     """Manage changelog entries and release manifests."""
-    configure_logging(debug)
 
-    # Handle multiple roots
-    if len(roots) == 0:
-        # Default to current directory for single-project mode
-        root = _resolve_project_root(Path("."))
-        config_path = config.resolve() if config else default_config_path(root)
-        log_debug(f"resolved project root: {root}")
-        log_debug(f"using config path: {config_path}")
-        ctx.obj = CLIContext(project_root=root, config_path=config_path)
-    elif len(roots) == 1:
-        # Single root specified
-        root = _resolve_project_root(roots[0])
-        config_path = config.resolve() if config else default_config_path(root)
-        log_debug(f"resolved project root: {root}")
-        log_debug(f"using config path: {config_path}")
-        ctx.obj = CLIContext(project_root=root, config_path=config_path)
-    else:
-        # Multiple roots specified - multi-project mode
-        if config is not None:
-            log_warning("--config option is ignored in multi-project mode")
-        resolved_roots = [_resolve_project_root(r) for r in roots]
-        log_debug(f"multi-project mode with roots: {resolved_roots}")
-        # Use first root as primary for compatibility
-        primary_root = resolved_roots[0]
-        primary_config_path = default_config_path(primary_root)
-        ctx.obj = CLIContext(
-            project_root=primary_root,
-            config_path=primary_config_path,
-            project_roots=resolved_roots,
-        )
+    ctx.obj = create_cli_context(roots=roots, config=config, debug=debug)
 
     if ctx.invoked_subcommand is None:
         ctx.invoke(show_entries)
@@ -1438,6 +1459,68 @@ def _resolve_identifiers_sequence(
 ShowView = Literal["table", "card", "markdown", "json"]
 
 
+def run_show_entries(
+    ctx: CLIContext,
+    *,
+    identifiers: Sequence[str] | None = None,
+    view: ShowView = "table",
+    project_filter: Sequence[str] | None = None,
+    component_filter: Sequence[str] | None = None,
+    banner: bool = False,
+    compact: Optional[bool] = None,
+    include_emoji: bool = True,
+) -> None:
+    """Python-friendly wrapper around the ``show`` command."""
+
+    identifier_values = tuple(identifiers or ())
+    project_filters = tuple(project_filter or ())
+    component_filters = tuple(component_filter or ())
+
+    if view == "table":
+        if compact is not None:
+            raise click.ClickException(
+                "--compact/--no-compact only apply to markdown and json views."
+            )
+        _show_entries_table(
+            ctx,
+            identifier_values,
+            project_filters,
+            component_filters,
+            banner,
+            include_emoji=include_emoji,
+        )
+        return
+
+    if project_filters or banner:
+        raise click.ClickException("--project/--banner are only available in table view.")
+
+    if view == "card":
+        if compact is not None:
+            raise click.ClickException(
+                "--compact/--no-compact only apply to markdown and json views."
+            )
+        _show_entries_card(
+            ctx,
+            identifier_values,
+            component_filters,
+            include_emoji=include_emoji,
+        )
+        return
+
+    if view in {"markdown", "json"}:
+        _show_entries_export(
+            ctx,
+            identifier_values,
+            view=view,
+            compact=compact,
+            include_emoji=include_emoji,
+            component_filter=component_filters,
+        )
+        return
+
+    raise click.ClickException(f"Unsupported view '{view}'.")
+
+
 def _gather_entry_context(
     project_root: Path,
 ) -> tuple[dict[str, Entry], dict[str, list[str]], dict[str, int], list[Entry]]:
@@ -1873,52 +1956,16 @@ def show_entries(
     view_choice = view_flags[-1] if view_flags else "table"
     if view_choice not in {"table", "card", "markdown", "json"}:
         raise click.ClickException(f"Unsupported view '{view_choice}'.")
-    view = cast(ShowView, view_choice)
-    include_emoji = not no_emoji
-
-    if view == "table":
-        if compact is not None:
-            raise click.ClickException(
-                "--compact/--no-compact only apply to markdown and json views."
-            )
-        _show_entries_table(
-            ctx,
-            identifiers,
-            project_filter,
-            component_filter,
-            banner,
-            include_emoji=include_emoji,
-        )
-        return
-
-    if project_filter or banner:
-        raise click.ClickException("--project/--banner are only available in table view.")
-
-    if view == "card":
-        if compact is not None:
-            raise click.ClickException(
-                "--compact/--no-compact only apply to markdown and json views."
-            )
-        _show_entries_card(
-            ctx,
-            identifiers,
-            component_filter,
-            include_emoji=include_emoji,
-        )
-        return
-
-    if view in {"markdown", "json"}:
-        _show_entries_export(
-            ctx,
-            identifiers,
-            view=view,
-            compact=compact,
-            include_emoji=include_emoji,
-            component_filter=component_filter,
-        )
-        return
-
-    raise click.ClickException(f"Unsupported view '{view}'.")
+    run_show_entries(
+        ctx,
+        identifiers=identifiers,
+        view=cast(ShowView, view_choice),
+        project_filter=project_filter,
+        component_filter=component_filter,
+        banner=banner,
+        compact=compact,
+        include_emoji=not no_emoji,
+    )
 
 
 SHOW_COMMAND_SUMMARY = "Display changelog entries in tables, cards, or exports."
@@ -2084,6 +2131,96 @@ def _format_author_line(entry: Entry, config: Config) -> str:
     return "*" + " ".join(parts) + ".*"
 
 
+def create_entry(
+    ctx: CLIContext,
+    *,
+    title: Optional[str] = None,
+    entry_type: Optional[str] = None,
+    project_override: Optional[str] = None,
+    component: Optional[str] = None,
+    authors: Sequence[str] | None = None,
+    prs: Sequence[str] | None = None,
+    description: Optional[str] = None,
+) -> Path:
+    """Python wrapper for creating entries that mirrors the CLI behavior."""
+
+    config = ctx.ensure_config(create_if_missing=True)
+    project_root = ctx.project_root
+
+    title = title or _prompt_text("Title")
+    if entry_type:
+        normalized_type = _normalize_entry_type(entry_type)
+        if normalized_type is None:
+            raise click.ClickException(
+                f"Unknown entry type '{entry_type}'. Expected one of: {', '.join(ENTRY_TYPES)}"
+            )
+        entry_type = normalized_type
+    else:
+        entry_type = _prompt_entry_type()
+
+    project_value = (project_override or "").strip() or config.id
+    if project_value != config.id:
+        raise click.ClickException(f"Unknown project '{project_value}'. Expected '{config.id}'.")
+
+    available_components = list(config.components)
+    component_value: Optional[str] = None
+    if component:
+        candidate = component.strip()
+        if candidate:
+            if available_components:
+                lookup = {value.lower(): value for value in available_components}
+                lowered = candidate.lower()
+                if lowered not in lookup:
+                    allowed = ", ".join(available_components)
+                    raise click.ClickException(
+                        f"Unknown component '{candidate}'. Allowed components: {allowed}"
+                    )
+                component_value = lookup[lowered]
+            else:
+                component_value = candidate
+    elif available_components and component == "":
+        # Explicit empty string passed via CLI (e.g., --component "")
+        component_value = None
+
+    author_values = tuple(authors or ())
+    if author_values:
+        authors_list = [author.strip() for author in author_values if author.strip()]
+    else:
+        author_value = _prompt_optional("Authors (comma separated)", default="")
+        authors_list = (
+            [item.strip() for item in author_value.split(",") if item.strip()]
+            if author_value
+            else []
+        )
+
+    body = description or _prompt_entry_body()
+
+    pr_numbers: list[int] = []
+    for pr_value in tuple(prs or ()):  # normalize sequence for prompts
+        pr_value = pr_value.strip()
+        if not pr_value:
+            continue
+        try:
+            pr_numbers.append(int(pr_value))
+        except ValueError as exc:
+            raise click.ClickException(f"PR value '{pr_value}' must be numeric.") from exc
+
+    metadata: dict[str, Any] = {
+        "title": title,
+        "type": entry_type,
+        "project": project_value,
+        "authors": authors_list or None,
+    }
+    if component_value:
+        metadata["component"] = component_value
+    if pr_numbers:
+        metadata["prs"] = pr_numbers
+
+    path = write_entry(project_root, metadata, body, default_project=config.id)
+    log_success(f"entry created: {path.relative_to(project_root)}")
+    return path
+
+
 @cli.command("add")
 @click.option("--title", help="Title for the changelog entry.")
 @click.option(
@@ -2124,79 +2261,17 @@ def add(
     description: Optional[str],
 ) -> None:
     """Create a new changelog entry."""
-    config = ctx.ensure_config(create_if_missing=True)
-    project_root = ctx.project_root
 
-    title = title or _prompt_text("Title")
-    if entry_type:
-        normalized_type = _normalize_entry_type(entry_type)
-        if normalized_type is None:
-            raise click.ClickException(
-                f"Unknown entry type '{entry_type}'. Expected one of: {', '.join(ENTRY_TYPES)}"
-            )
-        entry_type = normalized_type
-    else:
-        entry_type = _prompt_entry_type()
-
-    project_value = (project_override or "").strip() or config.id
-    if project_value != config.id:
-        raise click.ClickException(f"Unknown project '{project_value}'. Expected '{config.id}'.")
-
-    available_components = list(config.components)
-    component_value: Optional[str] = None
-    if component:
-        candidate = component.strip()
-        if candidate:
-            if available_components:
-                lookup = {value.lower(): value for value in available_components}
-                lowered = candidate.lower()
-                if lowered not in lookup:
-                    allowed = ", ".join(available_components)
-                    raise click.ClickException(
-                        f"Unknown component '{candidate}'. Allowed components: {allowed}"
-                    )
-                component_value = lookup[lowered]
-            else:
-                component_value = candidate
-    elif available_components and component == "":
-        # Explicit empty string passed via CLI (e.g., --component "")
-        component_value = None
-
-    if authors:
-        authors_list = [author.strip() for author in authors if author.strip()]
-    else:
-        author_value = _prompt_optional("Authors (comma separated)", default="")
-        authors_list = (
-            [item.strip() for item in author_value.split(",") if item.strip()]
-            if author_value
-            else []
-        )
-
-    body = description or _prompt_entry_body()
-
-    pr_numbers: list[int] = []
-    for pr_value in prs:
-        pr_value = pr_value.strip()
-        if not pr_value:
-            continue
-        try:
-            pr_numbers.append(int(pr_value))
-        except ValueError as exc:
-            raise click.ClickException(f"PR value '{pr_value}' must be numeric.") from exc
-
-    metadata: dict[str, Any] = {
-        "title": title,
-        "type": entry_type,
-        "project": project_value,
-        "authors": authors_list or None,
-    }
-    if component_value:
-        metadata["component"] = component_value
-    if pr_numbers:
-        metadata["prs"] = pr_numbers
-
-    path = write_entry(project_root, metadata, body, default_project=config.id)
-    log_success(f"entry created: {path.relative_to(project_root)}")
+    create_entry(
+        ctx,
+        title=title,
+        entry_type=entry_type,
+        project_override=project_override,
+        component=component,
+        authors=authors,
+        prs=prs,
+        description=description,
+    )
 
 
 def _render_release_notes(
@@ -2489,54 +2564,9 @@ def _create_multi_project_release(
     log_success(f"\nCoordinated release {version} created successfully across all projects!")
 
 
-@release_group.command("create")
-@click.argument("version", required=False)
-@click.option("--title", help="Display title for the release.")
-@click.option("--intro", "intro_text", help="Short release introduction.")
-@click.option(
-    "--date",
-    "release_date",
-    type=click.DateTime(formats=["%Y-%m-%d"]),
-    help="Release date (YYYY-MM-DD). Defaults to today or existing release date.",
-)
-@click.option(
-    "--intro-file",
-    type=click.Path(path_type=Path, dir_okay=False),
-    help="Markdown file containing introductory notes for the release.",
-)
-@click.option(
-    "--compact/--no-compact",
-    default=None,
-    help="Render release notes in the compact format.",
-)
-@click.option(
-    "--yes",
-    "assume_yes",
-    is_flag=True,
-    help="Apply detected changes without prompting.",
-)
-@click.option(
-    "--patch",
-    "version_bump",
-    flag_value="patch",
-    default=None,
-    help="Bump the patch segment from the latest release.",
-)
-@click.option(
-    "--minor",
-    "version_bump",
-    flag_value="minor",
-    help="Bump the minor segment from the latest release.",
-)
-@click.option(
-    "--major",
-    "version_bump",
-    flag_value="major",
-    help="Bump the major segment from the latest release.",
-)
-@click.pass_obj
-def release_create_cmd(
+def create_release(
     ctx: CLIContext,
+    *,
     version: Optional[str],
     title: Optional[str],
     intro_text: Optional[str],
@@ -2545,8 +2575,11 @@ def release_create_cmd(
     compact: Optional[bool],
     assume_yes: bool,
     version_bump: Optional[str],
+    title_explicit: bool,
+    compact_explicit: bool,
 ) -> None:
-    """Create or update a release manifest from unused entries."""
+    """Python wrapper for release creation that mirrors CLI behavior."""
+
     # Multi-project mode
     if ctx.is_multi_project():
         if not version:
@@ -2564,23 +2597,17 @@ def release_create_cmd(
         _create_multi_project_release(projects, version, assume_yes)
         return
 
-    # Single-project mode (existing logic)
+    # Single-project mode
     config = ctx.ensure_config()
     project_root = ctx.project_root
 
     version = _resolve_release_version(project_root, version, version_bump)
 
-    click_ctx = click.get_current_context()
     existing_manifest = _find_release_manifest(project_root, version)
     if version_bump and existing_manifest is not None:
         raise click.ClickException(
             f"Release '{version}' already exists. Supply a different bump flag or explicit version."
         )
-    compact_source = click_ctx.get_parameter_source("compact")
-    if compact_source == ParameterSource.DEFAULT:
-        compact_flag = config.export_style == EXPORT_STYLE_COMPACT
-    else:
-        compact_flag = bool(compact)
     release_dir = release_directory(project_root) / version
     manifest_path = release_dir / "manifest.yaml"
     notes_path = release_dir / NOTES_FILENAME
@@ -2633,11 +2660,12 @@ def release_create_cmd(
         )
     _print_renderable(table)
 
-    title_source = click_ctx.get_parameter_source("title")
-
+    if title is not None and not title_explicit:
+        # Treat explicitly provided empty strings as intentional overrides.
+        title_explicit = True
     release_title = (
         title
-        if title_source != ParameterSource.DEFAULT
+        if title_explicit
         else existing_manifest.title
         if existing_manifest
         else f"{config.name} {version}"
@@ -2667,7 +2695,12 @@ def release_create_cmd(
         entries_sorted, config, include_emoji=True
     )
 
-    if compact_source == ParameterSource.DEFAULT:
+    if compact_explicit:
+        compact_flag = bool(compact)
+        existing_notes_payload = (
+            notes_path.read_text(encoding="utf-8") if notes_path.exists() else None
+        )
+    else:
         prefer_compact = config.export_style == EXPORT_STYLE_COMPACT
         existing_notes_payload = (
             notes_path.read_text(encoding="utf-8") if notes_path.exists() else None
@@ -2687,11 +2720,6 @@ def release_create_cmd(
             elif normalized_existing == doc_standard:
                 prefer_compact = False
         compact_flag = prefer_compact
-    else:
-        compact_flag = bool(compact)
-        existing_notes_payload = (
-            notes_path.read_text(encoding="utf-8") if notes_path.exists() else None
-        )
 
     release_notes = release_notes_compact if compact_flag else release_notes_standard
 
@@ -2770,40 +2798,94 @@ def release_create_cmd(
         log_success(f"updated release metadata for {version}.")
 
 
-@release_group.command("notes")
-@click.argument("identifier")
+@release_group.command("create")
+@click.argument("version", required=False)
+@click.option("--title", help="Display title for the release.")
+@click.option("--intro", "intro_text", help="Short release introduction.")
 @click.option(
-    "-m",
-    "format_choice",
-    flag_value="markdown",
-    default="markdown",
-    help="Render notes as Markdown (default).",
+    "--date",
+    "release_date",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Release date (YYYY-MM-DD). Defaults to today or existing release date.",
 )
 @click.option(
-    "-j",
-    "format_choice",
-    flag_value="json",
-    help="Render notes as JSON.",
+    "--intro-file",
+    type=click.Path(path_type=Path, dir_okay=False),
+    help="Markdown file containing introductory notes for the release.",
 )
 @click.option(
     "--compact/--no-compact",
     default=None,
-    help="Use the compact layout when rendering Markdown.",
+    help="Render release notes in the compact format.",
 )
 @click.option(
-    "--no-emoji",
+    "--yes",
+    "assume_yes",
     is_flag=True,
-    help="Disable type emoji in Markdown output.",
+    help="Apply detected changes without prompting.",
+)
+@click.option(
+    "--patch",
+    "version_bump",
+    flag_value="patch",
+    default=None,
+    help="Bump the patch segment from the latest release.",
+)
+@click.option(
+    "--minor",
+    "version_bump",
+    flag_value="minor",
+    help="Bump the minor segment from the latest release.",
+)
+@click.option(
+    "--major",
+    "version_bump",
+    flag_value="major",
+    help="Bump the major segment from the latest release.",
 )
 @click.pass_obj
-def release_notes_cmd(
+def release_create_cmd(
     ctx: CLIContext,
-    identifier: str,
-    format_choice: str,
+    version: Optional[str],
+    title: Optional[str],
+    intro_text: Optional[str],
+    release_date: Optional[datetime],
+    intro_file: Optional[Path],
     compact: Optional[bool],
-    no_emoji: bool,
+    assume_yes: bool,
+    version_bump: Optional[str],
 ) -> None:
-    """Display release notes for a release or the unreleased bucket."""
+    """Create or update a release manifest from unused entries."""
+
+    click_ctx = click.get_current_context()
+    title_explicit = click_ctx.get_parameter_source("title") != ParameterSource.DEFAULT
+    compact_explicit = click_ctx.get_parameter_source("compact") != ParameterSource.DEFAULT
+    create_release(
+        ctx,
+        version=version,
+        title=title,
+        intro_text=intro_text,
+        release_date=release_date,
+        intro_file=intro_file,
+        compact=compact,
+        assume_yes=assume_yes,
+        version_bump=version_bump,
+        title_explicit=title_explicit,
+        compact_explicit=compact_explicit,
+    )
+
+
+def render_release_notes(
+    ctx: CLIContext,
+    *,
+    identifier: str,
+    view: Literal["markdown", "json"],
+    compact: Optional[bool],
+    include_emoji: bool,
+    compact_explicit: bool,
+) -> None:
+    """Python wrapper to display release notes in code contexts."""
+
     config = ctx.ensure_config()
     project_root = ctx.project_root
 
@@ -2822,15 +2904,11 @@ def release_notes_cmd(
     resolution = resolutions[0]
     manifest = resolution.manifest if resolution.kind == "release" else None
 
-    include_emoji = not no_emoji
-    click_ctx = click.get_current_context()
-    compact_source = click_ctx.get_parameter_source("compact")
     compact_flag = (
-        config.export_style == EXPORT_STYLE_COMPACT
-        if compact_source == ParameterSource.DEFAULT
-        else bool(compact)
+        bool(compact) if compact_explicit else config.export_style == EXPORT_STYLE_COMPACT
     )
-    view = format_choice or "markdown"
+    if view not in {"markdown", "json"}:
+        raise click.ClickException(f"Unsupported notes format '{view}'.")
 
     entries_for_output = sorted(resolution.entries, key=_release_entry_sort_key)
     release_index_export = build_entry_release_index(project_root, project=config.id)
@@ -2889,40 +2967,65 @@ def release_notes_cmd(
     emit_output(output)
 
 
-@release_group.command("publish")
-@click.argument("version")
+@release_group.command("notes")
+@click.argument("identifier")
 @click.option(
-    "--draft/--no-draft",
-    default=False,
-    help="Create the GitHub release as a draft.",
+    "-m",
+    "format_choice",
+    flag_value="markdown",
+    default="markdown",
+    help="Render notes as Markdown (default).",
 )
 @click.option(
-    "--prerelease/--no-prerelease",
-    default=False,
-    help="Mark the GitHub release as a prerelease.",
+    "-j",
+    "format_choice",
+    flag_value="json",
+    help="Render notes as JSON.",
 )
 @click.option(
-    "--tag",
-    "create_tag",
+    "--compact/--no-compact",
+    default=None,
+    help="Use the compact layout when rendering Markdown.",
+)
+@click.option(
+    "--no-emoji",
     is_flag=True,
-    help="Create an annotated git tag before publishing.",
-)
-@click.option(
-    "--yes",
-    "assume_yes",
-    is_flag=True,
-    help="Publish without confirmation prompts.",
+    help="Disable type emoji in Markdown output.",
 )
 @click.pass_obj
-def release_publish_cmd(
+def release_notes_cmd(
     ctx: CLIContext,
+    identifier: str,
+    format_choice: str,
+    compact: Optional[bool],
+    no_emoji: bool,
+) -> None:
+    """Display release notes for a release or the unreleased bucket."""
+
+    click_ctx = click.get_current_context()
+    compact_explicit = click_ctx.get_parameter_source("compact") != ParameterSource.DEFAULT
+    view_choice = cast(Literal["markdown", "json"], format_choice or "markdown")
+    render_release_notes(
+        ctx,
+        identifier=identifier,
+        view=view_choice,
+        compact=compact,
+        include_emoji=not no_emoji,
+        compact_explicit=compact_explicit,
+    )
+
+
+def publish_release(
+    ctx: CLIContext,
+    *,
     version: str,
     draft: bool,
     prerelease: bool,
     create_tag: bool,
     assume_yes: bool,
 ) -> None:
-    """Publish a release to GitHub using the gh CLI."""
+    """Python wrapper around the ``release publish`` command."""
+
     config = ctx.ensure_config()
     project_root = ctx.project_root
 
@@ -3036,10 +3139,54 @@ def release_publish_cmd(
     log_success(f"published {manifest.version} to GitHub repository {config.repository}.")
 
 
-@cli.command("validate")
+@release_group.command("publish")
+@click.argument("version")
+@click.option(
+    "--draft/--no-draft",
+    default=False,
+    help="Create the GitHub release as a draft.",
+)
+@click.option(
+    "--prerelease/--no-prerelease",
+    default=False,
+    help="Mark the GitHub release as a prerelease.",
+)
+@click.option(
+    "--tag",
+    "create_tag",
+    is_flag=True,
+    help="Create an annotated git tag before publishing.",
+)
+@click.option(
+    "--yes",
+    "assume_yes",
+    is_flag=True,
+    help="Publish without confirmation prompts.",
+)
 @click.pass_obj
-def validate_cmd(ctx: CLIContext) -> None:
-    """Validate entries and release manifests."""
+def release_publish_cmd(
+    ctx: CLIContext,
+    version: str,
+    draft: bool,
+    prerelease: bool,
+    create_tag: bool,
+    assume_yes: bool,
+) -> None:
+    """Publish a release to GitHub using the gh CLI."""
+
+    publish_release(
+        ctx,
+        version=version,
+        draft=draft,
+        prerelease=prerelease,
+        create_tag=create_tag,
+        assume_yes=assume_yes,
+    )
+
+
+def run_validate(ctx: CLIContext) -> None:
+    """Python wrapper for validating changelog files."""
+
     config = ctx.ensure_config()
     issues = run_validation(ctx.project_root, config)
     if not issues:
@@ -3050,6 +3197,14 @@ def validate_cmd(ctx: CLIContext) -> None:
         severity_label = issue.severity.lower()
         log_error(f"{severity_label} issue at {issue.path}: {issue.message}")
     raise SystemExit(1)
+
+
+@cli.command("validate")
+@click.pass_obj
+def validate_cmd(ctx: CLIContext) -> None:
+    """Validate entries and release manifests."""
+
+    run_validate(ctx)
 
 
 def _export_markdown_release(
