@@ -1,0 +1,4 @@
+created: 2025-11-10
+title: Changelog v0.8.1
+intro: >-
+  Patch release to stabilize GitHub context inference tests.

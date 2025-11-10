@@ -543,6 +543,14 @@ def test_add_infers_metadata_from_gh_context(tmp_path: Path) -> None:
     gh_stub.chmod(0o755)
     env = os.environ.copy()
     env["PATH"] = f"{project_dir}{os.pathsep}{env.get('PATH', '')}"
+    for key in (
+        "TENZIR_CHANGELOG_AUTHOR",
+        "GH_USERNAME",
+        "GH_USER",
+        "GITHUB_ACTOR",
+        "GITHUB_USER",
+    ):
+        env[key] = ""
 
     add_result = runner.invoke(
         cli,
