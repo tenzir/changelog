@@ -55,8 +55,10 @@
 
 - When you implement new changes, features, or fix bugs, create a new changelog
   entry with `uv run tenzir-changelog --root changelog add ...`; do not
-  hand-write changelog entry files.
-- If you are a coding agent, use your own name as author, e.g., claude or codex.
+  hand-write changelog entry files. Pass the appropriate component as argument,
+  based on the available components in `changelog/config.yaml`.
+- If you are a coding agent, add your own name as author, e.g., claude or codex.
+  Keep the author list alphabetically sorted.
 - Focus on the user-facing impact of your changes. Do not mention internal
   implementation details.
 - Always begin with one sentence or paragraph that concisely describes the
@@ -64,9 +66,9 @@
 - If helpful, add examples of how to use a the new feature or how to fix the
   bug. A changelog entry can have multiple paragraphs and should read like a
   concise micro-blog post that spotlights the change.
-- Make deliberate use of Markdown syntax, e.g., frame technical pieces of the
-  code base in backticks, e.g., `--option 42` or `cmd`. Use emphasis and bold
-  where it feels appropriate and improves clarity.
+- Make deliberate use of Markdown syntax, e.g., frame code and technical parts
+  in backticks, e.g., `--option 42` or `cmd`. Use emphasis and bold where it
+  feels appropriate and improves clarity.
 
 ## Commit & Pull Request Guidelines
 
