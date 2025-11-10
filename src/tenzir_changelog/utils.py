@@ -226,7 +226,9 @@ def detect_github_login(
             stripped = value.strip()
             if stripped:
                 if log_success:
-                    log_info(f"detected GitHub login '@{stripped}' from environment key {key}.")
+                    log_info(
+                        f"detected GitHub login {format_bold(stripped)} from environment key {key}."
+                    )
                 else:
                     log_debug(f"detected GitHub login '{stripped}' from environment key {key}.")
                 return stripped
@@ -252,7 +254,7 @@ def detect_github_login(
     login = result.stdout.strip()
     if login:
         if log_success:
-            log_info(f"detected GitHub login '@{login}' via gh CLI.")
+            log_info(f"detected GitHub login {format_bold(login)} via gh CLI.")
         else:
             log_debug(f"detected GitHub login '{login}' via gh CLI.")
         return login
@@ -274,7 +276,10 @@ def detect_github_pr_number(
             stripped = value.strip()
             if stripped.isdigit():
                 if log_success:
-                    log_info(f"detected open pull request #{stripped} from environment key {key}.")
+                    log_info(
+                        f"detected open pull request {format_bold(f'#{stripped}')} "
+                        f"from environment key {key}."
+                    )
                 else:
                     log_debug(f"detected PR #{stripped} from environment key {key}.")
                 return int(stripped)
@@ -305,7 +310,7 @@ def detect_github_pr_number(
     if number <= 0:
         return None
     if log_success:
-        log_info(f"detected open pull request #{number} via gh CLI.")
+        log_info(f"detected open pull request {format_bold(f'#{number}')} via gh CLI.")
     else:
         log_debug(f"detected PR #{number} via gh CLI.")
     return number
