@@ -2153,9 +2153,7 @@ def create_entry(
     normalized_title = (title or "").strip()
     if not normalized_title:
         if not allow_interactive:
-            raise click.ClickException(
-                "Title is required when running the API non-interactively."
-            )
+            raise click.ClickException("Title is required when running the API non-interactively.")
         normalized_title = _prompt_text("Title")
     title = normalized_title
     if entry_type:

@@ -1,0 +1,5 @@
+created: 2025-11-10
+title: Changelog v0.8.0
+intro: >-
+  Infer GitHub context for entries, keep the Python API non-interactive, and showcase
+  components in the dogfooded project.
