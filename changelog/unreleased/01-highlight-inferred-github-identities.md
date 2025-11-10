@@ -3,6 +3,7 @@ title: Highlight inferred GitHub identities
 type: change
 authors:
 - codex
+component: cli
 created: 2025-11-10
 ---
 
