@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -212,7 +212,7 @@ def _normalize_created_metadata(
     if "created" not in metadata or metadata["created"] is None:
         metadata.pop("created", None)
         if default_now:
-            metadata["created"] = datetime.now()
+            metadata["created"] = datetime.now(timezone.utc)
         return
     raw_created = metadata["created"]
     created_value = coerce_datetime(raw_created)
@@ -222,7 +222,7 @@ def _normalize_created_metadata(
     if isinstance(raw_created, str) and not raw_created.strip():
         metadata.pop("created", None)
         if default_now:
-            metadata["created"] = datetime.now()
+            metadata["created"] = datetime.now(timezone.utc)
         return
     raise ValueError(f"Invalid created datetime value: {raw_created!r}")
 
