@@ -48,27 +48,29 @@ def test_read_entry_normalizes_singular_author_to_authors(tmp_path: Path) -> Non
     assert entry.metadata["authors"] == ["codex"]
 
 
-def test_read_entry_prefers_plural_prs_over_singular_pr(tmp_path: Path) -> None:
-    """When both `pr` and `prs` are present, `prs` takes precedence."""
+def test_read_entry_rejects_both_pr_and_prs(tmp_path: Path) -> None:
+    """Having both `pr` and `prs` should raise an error."""
+    import pytest
+
     entry_file = tmp_path / "03-test.md"
     entry_file.write_text(
         "---\ntitle: Test Entry\ntype: feature\npr: 99\nprs:\n  - 42\n  - 43\n---\nBody.\n",
         encoding="utf-8",
     )
 
-    entry = read_entry(entry_file)
-    assert "pr" not in entry.metadata
-    assert entry.metadata["prs"] == [42, 43]
+    with pytest.raises(ValueError, match="cannot have both 'pr' and 'prs'"):
+        read_entry(entry_file)
 
 
-def test_read_entry_prefers_plural_authors_over_singular_author(tmp_path: Path) -> None:
-    """When both `author` and `authors` are present, `authors` takes precedence."""
+def test_read_entry_rejects_both_author_and_authors(tmp_path: Path) -> None:
+    """Having both `author` and `authors` should raise an error."""
+    import pytest
+
     entry_file = tmp_path / "04-test.md"
     entry_file.write_text(
         "---\ntitle: Test Entry\ntype: feature\nauthor: ignored\nauthors:\n  - alice\n  - bob\n---\nBody.\n",
         encoding="utf-8",
     )
 
-    entry = read_entry(entry_file)
-    assert "author" not in entry.metadata
-    assert entry.metadata["authors"] == ["alice", "bob"]
+    with pytest.raises(ValueError, match="cannot have both 'author' and 'authors'"):
+        read_entry(entry_file)

@@ -251,23 +251,25 @@ def _normalize_created_metadata(
 def _normalize_prs_metadata(metadata: dict[str, Any]) -> None:
     """Normalize singular `pr` key to plural `prs` key."""
     if "pr" in metadata:
+        if "prs" in metadata:
+            raise ValueError("Entry cannot have both 'pr' and 'prs' keys; use one or the other.")
         pr_value = metadata.pop("pr")
-        if "prs" not in metadata:
-            # Convert singular value to a list
-            if pr_value is not None:
-                metadata["prs"] = [pr_value] if not isinstance(pr_value, list) else pr_value
+        if pr_value is not None:
+            metadata["prs"] = [pr_value] if not isinstance(pr_value, list) else pr_value
 
 
 def _normalize_authors_metadata(metadata: dict[str, Any]) -> None:
     """Normalize singular `author` key to plural `authors` key."""
     if "author" in metadata:
+        if "authors" in metadata:
+            raise ValueError(
+                "Entry cannot have both 'author' and 'authors' keys; use one or the other."
+            )
         author_value = metadata.pop("author")
-        if "authors" not in metadata:
-            # Convert singular value to a list
-            if author_value is not None:
-                metadata["authors"] = (
-                    [author_value] if not isinstance(author_value, list) else author_value
-                )
+        if author_value is not None:
+            metadata["authors"] = (
+                [author_value] if not isinstance(author_value, list) else author_value
+            )
 
 
 def format_frontmatter(metadata: dict[str, Any]) -> str:
