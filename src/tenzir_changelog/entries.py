@@ -85,6 +85,8 @@ def read_entry(path: Path) -> Entry:
     metadata = yaml.safe_load(frontmatter) or {}
     _normalize_created_metadata(metadata)
     _normalize_component_metadata(metadata, required=False)
+    _normalize_prs_metadata(metadata)
+    _normalize_authors_metadata(metadata)
     entry_id = path.stem
     sequence = _parse_entry_sequence(entry_id)
     return Entry(
@@ -244,6 +246,28 @@ def _normalize_created_metadata(
             metadata["created"] = date.today()
         return
     raise ValueError(f"Invalid created date value: {raw_created!r}")
+
+
+def _normalize_prs_metadata(metadata: dict[str, Any]) -> None:
+    """Normalize singular `pr` key to plural `prs` key."""
+    if "pr" in metadata:
+        pr_value = metadata.pop("pr")
+        if "prs" not in metadata:
+            # Convert singular value to a list
+            if pr_value is not None:
+                metadata["prs"] = [pr_value] if not isinstance(pr_value, list) else pr_value
+
+
+def _normalize_authors_metadata(metadata: dict[str, Any]) -> None:
+    """Normalize singular `author` key to plural `authors` key."""
+    if "author" in metadata:
+        author_value = metadata.pop("author")
+        if "authors" not in metadata:
+            # Convert singular value to a list
+            if author_value is not None:
+                metadata["authors"] = (
+                    [author_value] if not isinstance(author_value, list) else author_value
+                )
 
 
 def format_frontmatter(metadata: dict[str, Any]) -> str:

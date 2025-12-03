@@ -242,9 +242,13 @@ class ColumnSpec(TypedDict, total=False):
 
 
 def _parse_pr_numbers(metadata: Mapping[str, Any]) -> list[int]:
-    """Normalize PR metadata into a list of integers."""
+    """Normalize PR metadata into a list of integers.
 
+    Supports both plural `prs` and singular `pr` keys, with `prs` taking precedence.
+    """
     value = metadata.get("prs")
+    if value is None:
+        value = metadata.get("pr")
     if value is None:
         return []
 
@@ -2096,7 +2100,11 @@ def _join_with_conjunction(items: list[str]) -> str:
 
 def _collect_author_pr_text(entry: Entry, config: Config) -> tuple[str, str]:
     metadata = entry.metadata
-    authors = metadata.get("authors") or []
+    # Support both plural `authors` and singular `author` keys
+    authors = metadata.get("authors")
+    if authors is None:
+        authors = metadata.get("author")
+    authors = authors or []
     if isinstance(authors, str):
         authors = [authors]
     authors = [author.strip() for author in authors if author and author.strip()]
