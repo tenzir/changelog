@@ -2240,12 +2240,20 @@ def create_entry(
         "title": title,
         "type": entry_type,
         "project": project_value,
-        "authors": authors_list or None,
     }
+    # Use singular form for single values, plural for multiple
+    if authors_list:
+        if len(authors_list) == 1:
+            metadata["author"] = authors_list[0]
+        else:
+            metadata["authors"] = authors_list
     if component_value:
         metadata["component"] = component_value
     if pr_numbers:
-        metadata["prs"] = pr_numbers
+        if len(pr_numbers) == 1:
+            metadata["pr"] = pr_numbers[0]
+        else:
+            metadata["prs"] = pr_numbers
 
     path = write_entry(project_root, metadata, body, default_project=config.id)
     log_success(f"entry created: {path.relative_to(project_root)}")
