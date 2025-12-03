@@ -1,7 +1,9 @@
 ---
 title: Automatically detect changelog/ subdirectory as root
 type: feature
-author: claude
+author:
+- claude
+- mavam
 pr: 4
 component: cli
 created: 2025-12-03T19:58:29.7171Z
