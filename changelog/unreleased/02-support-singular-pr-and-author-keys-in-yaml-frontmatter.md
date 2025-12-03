@@ -1,7 +1,9 @@
 ---
 title: Support singular pr and author keys in YAML frontmatter
 type: feature
-author: claude
+authors:
+- claude
+- mavam
 pr: 2
 component: cli
 created: 2025-12-03
