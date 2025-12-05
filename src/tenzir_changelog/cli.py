@@ -608,6 +608,33 @@ def _mask_comment_block(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _read_description_file(path: Path) -> str:
+    """Read description from file or stdin (if path is '-')."""
+    if str(path) == "-":
+        if sys.stdin.isatty():
+            raise click.ClickException(
+                "No input provided on stdin. Pipe content or use --description."
+            )
+        return sys.stdin.read()
+    if not path.exists():
+        raise click.ClickException(f"Description file not found: {path}")
+    return path.read_text(encoding="utf-8")
+
+
+def _resolve_description_input(
+    description: Optional[str],
+    description_file: Optional[Path],
+) -> Optional[str]:
+    """Resolve description from inline text, file, or stdin."""
+    if description is not None and description_file is not None:
+        raise click.ClickException("Use only one of --description or --description-file, not both.")
+    if description is not None:
+        return description
+    if description_file is not None:
+        return _read_description_file(description_file)
+    return None
+
+
 def create_cli_context(
     *,
     roots: Sequence[Path] | None = None,
@@ -2305,6 +2332,11 @@ def create_entry(
     "--description",
     help="Short body text for the entry (skips opening an editor).",
 )
+@click.option(
+    "--description-file",
+    type=click.Path(path_type=Path, dir_okay=False, exists=False),
+    help="File containing body text for the entry. Use '-' to read from stdin.",
+)
 @click.pass_obj
 def add(
     ctx: CLIContext,
@@ -2315,9 +2347,10 @@ def add(
     authors: tuple[str, ...],
     prs: tuple[str, ...],
     description: Optional[str],
+    description_file: Optional[Path],
 ) -> None:
     """Create a new changelog entry."""
-
+    resolved_description = _resolve_description_input(description, description_file)
     create_entry(
         ctx,
         title=title,
@@ -2326,7 +2359,7 @@ def add(
         component=component,
         authors=authors,
         prs=prs,
-        description=description,
+        description=resolved_description,
     )
 
 

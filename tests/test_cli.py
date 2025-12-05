@@ -2275,3 +2275,145 @@ def test_release_publish_skips_existing_tag(tmp_path: Path) -> None:
 
     gh_calls = gh_log.read_text(encoding="utf-8").strip().splitlines()
     assert any(line.startswith("release create v9.9.9") for line in gh_calls)
+
+
+def test_add_description_file(tmp_path: Path) -> None:
+    """Test --description-file reads content from a file."""
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    desc_file = tmp_path / "desc.md"
+    desc_file.write_text("This is the description from a file.", encoding="utf-8")
+
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "add",
+            "--title",
+            "File Description Test",
+            "--type",
+            "feature",
+            "--description-file",
+            str(desc_file),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    entry_files = list((project_dir / "unreleased").glob("*.md"))
+    assert len(entry_files) == 1
+    content = entry_files[0].read_text(encoding="utf-8")
+    assert "This is the description from a file." in content
+
+
+def test_add_description_file_stdin(tmp_path: Path) -> None:
+    """Test --description-file - reads from stdin."""
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "add",
+            "--title",
+            "Stdin Description Test",
+            "--type",
+            "feature",
+            "--description-file",
+            "-",
+        ],
+        input="Description from stdin.",
+    )
+    assert result.exit_code == 0, result.output
+
+    entry_files = list((project_dir / "unreleased").glob("*.md"))
+    assert len(entry_files) == 1
+    content = entry_files[0].read_text(encoding="utf-8")
+    assert "Description from stdin." in content
+
+
+def test_add_description_mutual_exclusivity(tmp_path: Path) -> None:
+    """Test that --description and --description-file cannot be used together."""
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    desc_file = tmp_path / "desc.md"
+    desc_file.write_text("File content", encoding="utf-8")
+
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "add",
+            "--title",
+            "Mutual Exclusivity Test",
+            "--type",
+            "feature",
+            "--description",
+            "Inline text",
+            "--description-file",
+            str(desc_file),
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Use only one of --description or --description-file" in result.output
+
+
+def test_add_description_file_not_found(tmp_path: Path) -> None:
+    """Test error handling for missing description file."""
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "add",
+            "--title",
+            "Missing File Test",
+            "--type",
+            "feature",
+            "--description-file",
+            str(tmp_path / "nonexistent.md"),
+        ],
+    )
+    assert result.exit_code != 0
+    assert "not found" in result.output.lower()
+
+
+def test_add_description_file_empty(tmp_path: Path) -> None:
+    """Test that empty description file results in empty body."""
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    desc_file = tmp_path / "empty.md"
+    desc_file.write_text("", encoding="utf-8")
+
+    result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "add",
+            "--title",
+            "Empty File Test",
+            "--type",
+            "feature",
+            "--description-file",
+            str(desc_file),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    entry_files = list((project_dir / "unreleased").glob("*.md"))
+    assert len(entry_files) == 1
