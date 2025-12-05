@@ -34,13 +34,20 @@ class Entry:
         return str(self.metadata.get("type", "change"))
 
     @property
-    def component(self) -> Optional[str]:
-        value = self.metadata.get("component")
+    def components(self) -> list[str]:
+        """Return the list of components for the entry."""
+        value = self.metadata.get("components")
         if value is None:
-            return None
-        if isinstance(value, str):
-            return value.strip() or None
-        return str(value).strip() or None
+            return []
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return [str(value).strip()] if str(value).strip() else []
+
+    @property
+    def component(self) -> Optional[str]:
+        """Return the first component (for backwards compatibility)."""
+        components = self.components
+        return components[0] if components else None
 
     @property
     def project(self) -> Optional[str]:
@@ -87,9 +94,9 @@ def read_entry(path: Path) -> Entry:
     frontmatter, _, body = remainder.partition("\n---\n")
     metadata = yaml.safe_load(frontmatter) or {}
     _normalize_created_metadata(metadata)
-    _normalize_component_metadata(metadata, required=False)
     _normalize_prs_metadata(metadata)
     _normalize_authors_metadata(metadata)
+    _normalize_components_metadata(metadata)
     entry_id = path.stem
     return Entry(
         entry_id=entry_id,
@@ -181,28 +188,6 @@ def normalize_project(
     return project
 
 
-def _normalize_component_metadata(
-    metadata: dict[str, Any],
-    *,
-    required: bool,
-) -> Optional[str]:
-    """Ensure component metadata is stored as a trimmed string."""
-    value = metadata.get("component")
-    if value is None:
-        if required:
-            raise ValueError("Entry metadata missing required 'component' field.")
-        metadata.pop("component", None)
-        return None
-    component = str(value).strip()
-    if not component:
-        if required:
-            raise ValueError("Entry metadata 'component' must be a non-empty string.")
-        metadata.pop("component", None)
-        return None
-    metadata["component"] = component
-    return component
-
-
 def _normalize_created_metadata(
     metadata: dict[str, Any],
     *,
@@ -251,6 +236,37 @@ def _normalize_authors_metadata(metadata: dict[str, Any]) -> None:
             )
 
 
+def _normalize_components_metadata(metadata: dict[str, Any]) -> None:
+    """Normalize singular `component` key to plural `components` key."""
+    if "component" in metadata:
+        if "components" in metadata:
+            raise ValueError(
+                "Entry cannot have both 'component' and 'components' keys; use one or the other."
+            )
+        component_value = metadata.pop("component")
+        if component_value is not None:
+            if isinstance(component_value, str):
+                stripped = component_value.strip()
+                if stripped:
+                    metadata["components"] = [stripped]
+            elif isinstance(component_value, list):
+                normalized = [str(item).strip() for item in component_value if str(item).strip()]
+                if normalized:
+                    metadata["components"] = normalized
+    elif "components" in metadata:
+        # Normalize existing plural key
+        components_value = metadata["components"]
+        if components_value is not None:
+            if isinstance(components_value, str):
+                stripped = components_value.strip()
+                metadata["components"] = [stripped] if stripped else None
+            elif isinstance(components_value, list):
+                normalized = [str(item).strip() for item in components_value if str(item).strip()]
+                metadata["components"] = normalized if normalized else None
+            if metadata.get("components") is None:
+                metadata.pop("components", None)
+
+
 def format_frontmatter(metadata: dict[str, Any]) -> str:
     """Render metadata as YAML frontmatter for an entry file."""
     cleaned: dict[str, Any] = {}
@@ -282,7 +298,7 @@ def write_entry(
     project_value = normalize_project(metadata, default=default_project)
     if default_project is not None and project_value == default_project:
         metadata.pop("project", None)
-    _normalize_component_metadata(metadata, required=False)
+    _normalize_components_metadata(metadata)
 
     if entry_id is None:
         title = metadata.get("title")

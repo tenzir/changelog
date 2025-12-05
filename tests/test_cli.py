@@ -1325,7 +1325,7 @@ def test_component_filtering(tmp_path: Path) -> None:
         ],
     )
     assert markdown_docs.exit_code == 0, markdown_docs.output
-    assert "**Component:** `docs`" in markdown_docs.output
+    assert "**Components:** `docs`" in markdown_docs.output
     assert "CLI Entry" not in markdown_docs.output
 
     json_docs = runner.invoke(
@@ -1344,7 +1344,7 @@ def test_component_filtering(tmp_path: Path) -> None:
     payload = json.loads(json_docs.output)
     assert len(payload["entries"]) == 1
     assert payload["entries"][0]["title"] == "Docs Entry"
-    assert payload["entries"][0]["component"] == "docs"
+    assert payload["entries"][0]["components"] == ["docs"]
 
     bad_filter = runner.invoke(
         cli,

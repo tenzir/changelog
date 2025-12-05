@@ -87,3 +87,46 @@ def test_read_entry_rejects_both_author_and_authors(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="cannot have both 'author' and 'authors'"):
         read_entry(entry_file)
+
+
+def test_read_entry_normalizes_singular_component_to_components(tmp_path: Path) -> None:
+    """Singular `component` key should be normalized to plural `components` list."""
+    entry_file = tmp_path / "test.md"
+    entry_file.write_text(
+        "---\ntitle: Test Entry\ntype: feature\ncomponent: cli\n---\nBody text.\n",
+        encoding="utf-8",
+    )
+
+    entry = read_entry(entry_file)
+    assert "component" not in entry.metadata
+    assert entry.metadata["components"] == ["cli"]
+    assert entry.components == ["cli"]
+    assert entry.component == "cli"  # backwards compat
+
+
+def test_read_entry_preserves_plural_components(tmp_path: Path) -> None:
+    """Plural `components` key should be preserved as a list."""
+    entry_file = tmp_path / "test.md"
+    entry_file.write_text(
+        "---\ntitle: Test Entry\ntype: feature\ncomponents:\n  - cli\n  - api\n---\nBody text.\n",
+        encoding="utf-8",
+    )
+
+    entry = read_entry(entry_file)
+    assert entry.metadata["components"] == ["cli", "api"]
+    assert entry.components == ["cli", "api"]
+    assert entry.component == "cli"  # returns first
+
+
+def test_read_entry_rejects_both_component_and_components(tmp_path: Path) -> None:
+    """Having both `component` and `components` should raise an error."""
+    import pytest
+
+    entry_file = tmp_path / "test.md"
+    entry_file.write_text(
+        "---\ntitle: Test Entry\ntype: feature\ncomponent: cli\ncomponents:\n  - api\n---\nBody.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="cannot have both 'component' and 'components'"):
+        read_entry(entry_file)

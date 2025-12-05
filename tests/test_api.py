@@ -26,7 +26,7 @@ def test_python_api_add_entry_creates_file(tmp_path: Path) -> None:
     path = client.add(
         title="API entry",
         entry_type="feature",
-        component="core",
+        components=["core"],
         authors=["codex"],
         prs=["42"],
         description="Body",

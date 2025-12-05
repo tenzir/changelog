@@ -43,13 +43,16 @@ def validate_entry(entry: Entry, config: Config) -> Iterable[ValidationIssue]:
             entry.path,
             f"Unknown project '{project}'. Expected '{config.id}'.",
         )
-    component = entry.component
-    if component and config.components and component not in config.components:
-        allowed = ", ".join(config.components)
-        yield ValidationIssue(
-            entry.path,
-            f"Unknown component '{component}'. Allowed components: {allowed}",
-        )
+    entry_components = entry.components
+    if entry_components and config.components:
+        unknown = [c for c in entry_components if c not in config.components]
+        if unknown:
+            allowed = ", ".join(config.components)
+            unknown_display = ", ".join(f"'{c}'" for c in unknown)
+            yield ValidationIssue(
+                entry.path,
+                f"Unknown component(s) {unknown_display}. Allowed components: {allowed}",
+            )
 
 
 def validate_release_ids(

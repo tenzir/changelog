@@ -750,8 +750,8 @@ def _filter_entries_by_component(entries: Iterable[Entry], components: set[str])
     normalized = {component.lower() for component in components}
     filtered: list[Entry] = []
     for entry in entries:
-        component_value = entry.component
-        if component_value and component_value.lower() in normalized:
+        entry_components = entry.components
+        if entry_components and any(c.lower() in normalized for c in entry_components):
             filtered.append(entry)
     return filtered
 
@@ -843,7 +843,7 @@ def _render_entries(
         _render_project_header(config)
 
     entries_list = list(entries)
-    include_component = any(entry.component for entry in entries_list)
+    include_component = any(entry.components for entry in entries_list)
     visible_columns, column_specs = _entries_table_layout(console.size.width, include_component)
     table_width = max(console.size.width, 40)
     table = Table(show_lines=False, expand=False, width=table_width, pad_edge=False)
@@ -979,7 +979,7 @@ def _render_entries(
         if "type" in visible_columns:
             row.append(type_display)
         if "component" in visible_columns:
-            component_value = entry.component or "—"
+            component_value = ", ".join(entry.components) if entry.components else "—"
             row.append(_ellipsis_cell(component_value, "component", column_specs))
         if "prs" in visible_columns:
             pr_numbers = _parse_pr_numbers(metadata)
@@ -1054,7 +1054,7 @@ def _render_release(
         if entry is None:
             entry = load_release_entry(project_root, manifest, entry_id)
         resolved_entries.append(entry)
-        if entry and entry.component:
+        if entry and entry.components:
             has_components = True
 
     if has_components:
@@ -1070,7 +1070,7 @@ def _render_release(
                 entry.metadata.get("type", "change"),
             ]
             if has_components:
-                row.append(entry.component or "—")
+                row.append(", ".join(entry.components) if entry.components else "—")
             table.add_row(*row)
         else:
             row = [str(index), entry_id, "[red]Missing entry[/red]", "—"]
@@ -1100,8 +1100,9 @@ def _render_single_entry(
     metadata_parts = []
     metadata_parts.append(f"Entry ID:  [cyan]{entry.entry_id}[/cyan]")
     metadata_parts.append(f"Type:      [{type_color}]{entry.type}[/{type_color}]")
-    if entry.component:
-        metadata_parts.append(f"Component: [green]{entry.component}[/green]")
+    if entry.components:
+        components_display = ", ".join(entry.components)
+        metadata_parts.append(f"Component: [green]{components_display}[/green]")
 
     if entry.created_at:
         metadata_parts.append(f"Created:   {entry.created_at}")
@@ -1216,8 +1217,8 @@ def _component_matches(entry: Entry, normalized_components: set[str]) -> bool:
     """Return True if entry matches the component filters."""
     if not normalized_components:
         return True
-    component_value = entry.component
-    return bool(component_value and component_value.lower() in normalized_components)
+    entry_components = entry.components
+    return bool(entry_components and any(c.lower() in normalized_components for c in entry_components))
 
 
 def _show_entries_table(
@@ -2120,8 +2121,8 @@ def _entry_to_dict(
         "version": version,
         "body": entry.body,
     }
-    if entry.component:
-        data["component"] = entry.component
+    if entry.components:
+        data["components"] = entry.components
     if compact:
         data["excerpt"] = extract_excerpt(entry.body)
     return data
@@ -2187,7 +2188,7 @@ def create_entry(
     title: Optional[str] = None,
     entry_type: Optional[str] = None,
     project_override: Optional[str] = None,
-    component: Optional[str] = None,
+    components: Sequence[str] | None = None,
     authors: Sequence[str] | None = None,
     prs: Sequence[str] | None = None,
     description: Optional[str] = None,
@@ -2219,24 +2220,22 @@ def create_entry(
         raise click.ClickException(f"Unknown project '{project_value}'. Expected '{config.id}'.")
 
     available_components = list(config.components)
-    component_value: Optional[str] = None
-    if component:
-        candidate = component.strip()
-        if candidate:
-            if available_components:
-                lookup = {value.lower(): value for value in available_components}
-                lowered = candidate.lower()
-                if lowered not in lookup:
-                    allowed = ", ".join(available_components)
-                    raise click.ClickException(
-                        f"Unknown component '{candidate}'. Allowed components: {allowed}"
-                    )
-                component_value = lookup[lowered]
-            else:
-                component_value = candidate
-    elif available_components and component == "":
-        # Explicit empty string passed via CLI (e.g., --component "")
-        component_value = None
+    component_values: list[str] = []
+    for raw_component in tuple(components or ()):
+        candidate = raw_component.strip()
+        if not candidate:
+            continue
+        if available_components:
+            lookup = {value.lower(): value for value in available_components}
+            lowered = candidate.lower()
+            if lowered not in lookup:
+                allowed = ", ".join(available_components)
+                raise click.ClickException(
+                    f"Unknown component '{candidate}'. Allowed components: {allowed}"
+                )
+            component_values.append(lookup[lowered])
+        else:
+            component_values.append(candidate)
 
     author_values = tuple(authors or ())
     if author_values:
@@ -2287,8 +2286,11 @@ def create_entry(
             metadata["author"] = authors_list[0]
         else:
             metadata["authors"] = authors_list
-    if component_value:
-        metadata["component"] = component_value
+    if component_values:
+        if len(component_values) == 1:
+            metadata["component"] = component_values[0]
+        else:
+            metadata["components"] = component_values
     if pr_numbers:
         if len(pr_numbers) == 1:
             metadata["pr"] = pr_numbers[0]
@@ -2318,7 +2320,9 @@ def create_entry(
 )
 @click.option(
     "--component",
-    help="Component associated with the change.",
+    "components",
+    multiple=True,
+    help="Component associated with the change (repeat for multiple).",
 )
 @click.option("--author", "authors", multiple=True, help="GitHub username of an author.")
 @click.option(
@@ -2343,7 +2347,7 @@ def add(
     title: Optional[str],
     entry_type: Optional[str],
     project_override: Optional[str],
-    component: Optional[str],
+    components: tuple[str, ...],
     authors: tuple[str, ...],
     prs: tuple[str, ...],
     description: Optional[str],
@@ -2356,7 +2360,7 @@ def add(
         title=title,
         entry_type=entry_type,
         project_override=project_override,
-        component=component,
+        components=components,
         authors=authors,
         prs=prs,
         description=resolved_description,
@@ -2391,8 +2395,9 @@ def _render_release_notes(
             title = entry.metadata.get("title", "Untitled")
             lines.append(f"### {title}")
             lines.append("")
-            if entry.component:
-                lines.append(f"**Component:** `{entry.component}`")
+            if entry.components:
+                components_display = ", ".join(f"`{c}`" for c in entry.components)
+                lines.append(f"**Components:** {components_display}")
                 lines.append("")
             body = entry.body.strip()
             if body:
@@ -2436,9 +2441,10 @@ def _render_release_notes_compact(
         for entry in type_entries:
             excerpt = extract_excerpt(entry.body)
             bullet_text = excerpt or entry.metadata.get("title", "Untitled")
-            component_label = entry.component
-            if component_label:
-                bullet = f"- **{component_label}**: {bullet_text}"
+            component_labels = entry.components
+            if component_labels:
+                components_display = ", ".join(component_labels)
+                bullet = f"- **{components_display}**: {bullet_text}"
             else:
                 bullet = f"- {bullet_text}"
             author_text, pr_text = _collect_author_pr_text(entry, config)
@@ -3332,8 +3338,9 @@ def _export_markdown_release(
             title = metadata.get("title", "Untitled")
             lines.append(f"### {title}")
             lines.append("")
-            if entry.component:
-                lines.append(f"**Component:** `{entry.component}`")
+            if entry.components:
+                components_display = ", ".join(f"`{c}`" for c in entry.components)
+                lines.append(f"**Components:** {components_display}")
                 lines.append("")
             body = entry.body.strip()
             if body:
@@ -3386,9 +3393,10 @@ def _export_markdown_compact(
             metadata = entry.metadata
             excerpt = extract_excerpt(entry.body)
             bullet_text = excerpt or metadata.get("title", "Untitled")
-            component_label = entry.component
-            if component_label:
-                bullet = f"- **{component_label}**: {bullet_text}"
+            component_labels = entry.components
+            if component_labels:
+                components_display = ", ".join(component_labels)
+                bullet = f"- **{components_display}**: {bullet_text}"
             else:
                 bullet = f"- {bullet_text}"
             author_text, pr_text = _collect_author_pr_text(entry, config)
