@@ -1102,7 +1102,7 @@ def _render_single_entry(
     metadata_parts.append(f"Type:      [{type_color}]{entry.type}[/{type_color}]")
     if entry.components:
         components_display = ", ".join(entry.components)
-        metadata_parts.append(f"Component: [green]{components_display}[/green]")
+        metadata_parts.append(f"Components: [green]{components_display}[/green]")
 
     if entry.created_at:
         metadata_parts.append(f"Created:   {entry.created_at}")
