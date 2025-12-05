@@ -29,14 +29,26 @@ caches the result for snappy subsequent invocations.
 
 ## 📚 Documentation
 
-- [User Reference](https://docs.tenzir.com/reference/changelog-framework):
-  Concise description of concepts and abstractions.
+Consult our [user
+guide](https://docs.tenzir.com/guides/package-management/maintain-a-changelog)
+for an end-to-end walkthrough of maintaining changelogs.
+
+We also provide a dense
+[reference](https://docs.tenzir.com/reference/changelog-framework) that explains
+concepts, abstractions, and CLI details.
 
 ## 🐶 Dogfooded Project
 
-The repository ships with `changelog/`, the real changelog project maintained
-by the Tenzir team. Explore it to see how `config.yaml`, `unreleased/`, and
-Markdown release manifests fit together end-to-end.
+The repository ships with [`changelog/`](changelog/), the real changelog project
+maintained by the Tenzir team. Explore it to see how
+[`config.yaml`](changelog/config.yaml), `unreleased/`, and Markdown release
+manifests fit together end-to-end.
+
+## 🤝 Contributing
+
+Want to contribute? We're all-in on agentic coding with [Claude
+Code](https://claude.ai/code)! The repo comes pre-configured with our [custom
+plugins](https://github.com/tenzir/claude-plugins)—just clone and start hacking.
 
 ## 📄 License
 
