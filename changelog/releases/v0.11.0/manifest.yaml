@@ -1,0 +1,8 @@
+created: 2025-12-05
+title: Tenzir Changelog v0.11.0
+intro: >-
+  This release adds the `--co-author` option for crediting additional authors
+
+  (useful for AI-assisted development) and improves entry parsing to accept
+
+  the plural `components` key in frontmatter.
