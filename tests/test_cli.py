@@ -1829,19 +1829,23 @@ def test_release_publish_uses_gh(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     config_data["repository"] = "tenzir/example"
     config_path.write_text(yaml.safe_dump(config_data, sort_keys=False), encoding="utf-8")
 
-    recorded_command: dict[str, list[str] | bool] = {}
+    recorded_args: list[str] = []
+    recorded_check: bool = False
     commands: list[list[str]] = []
 
     def fake_which(command: str) -> str:
         assert command == "gh"
         return "/usr/bin/gh"
 
-    def fake_run(args: list[str], *, check: bool, stdout=None, stderr=None) -> None:
+    def fake_run(
+        args: list[str], *, check: bool, stdout: object = None, stderr: object = None
+    ) -> None:
+        nonlocal recorded_args, recorded_check
         commands.append(args)
         if len(args) >= 3 and args[1:3] == ["release", "view"]:
             raise subprocess.CalledProcessError(returncode=1, cmd=args)
-        recorded_command["args"] = args
-        recorded_command["check"] = check
+        recorded_args = args
+        recorded_check = check
 
     monkeypatch.setattr("tenzir_changelog.cli.shutil.which", fake_which)
     monkeypatch.setattr("tenzir_changelog.cli.subprocess.run", fake_run)
@@ -1858,12 +1862,11 @@ def test_release_publish_uses_gh(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
         ],
     )
     assert publish_result.exit_code == 0, publish_result.output
-    assert recorded_command["check"] is True
-    args = recorded_command["args"]
-    assert args[:3] == ["/usr/bin/gh", "release", "create"]
-    assert "v3.0.0" in args
-    assert "--repo" in args and "tenzir/example" in args
-    assert "--notes-file" in args
+    assert recorded_check is True
+    assert recorded_args[:3] == ["/usr/bin/gh", "release", "create"]
+    assert "v3.0.0" in recorded_args
+    assert "--repo" in recorded_args and "tenzir/example" in recorded_args
+    assert "--notes-file" in recorded_args
     # Ensure existence check ran first.
     assert commands[0][:3] == ["/usr/bin/gh", "release", "view"]
 
@@ -1917,7 +1920,9 @@ def test_release_publish_updates_existing_release(
         assert command == "gh"
         return "/usr/bin/gh"
 
-    def fake_run(args: list[str], *, check: bool, stdout=None, stderr=None) -> None:
+    def fake_run(
+        args: list[str], *, check: bool, stdout: object = None, stderr: object = None
+    ) -> None:
         calls.append(args)
         if len(args) >= 3 and args[1:3] == ["release", "edit"]:
             return
@@ -1989,12 +1994,14 @@ def test_release_publish_handles_abort(monkeypatch: pytest.MonkeyPatch, tmp_path
         assert command == "gh"
         return "/usr/bin/gh"
 
-    def fake_run(args: list[str], *, check: bool, stdout=None, stderr=None) -> None:
+    def fake_run(
+        args: list[str], *, check: bool, stdout: object = None, stderr: object = None
+    ) -> None:
         if len(args) >= 3 and args[1:3] == ["release", "view"]:
             return
         raise AssertionError("gh CLI should not run when publish is aborted")
 
-    def fake_confirm(*args, **kwargs) -> bool:
+    def fake_confirm(*args: object, **kwargs: object) -> bool:
         raise click.Abort()
 
     monkeypatch.setattr("tenzir_changelog.cli.shutil.which", fake_which)

@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from typing import Sequence
+
 from tenzir_changelog import Changelog
 from tenzir_changelog.config import Config, save_config
 from tenzir_changelog import cli as cli_module
@@ -47,13 +49,13 @@ def test_python_api_show_delegates(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     def fake_run_show_entries(
         ctx: cli_module.CLIContext,
         *,
-        identifiers,
-        view,
-        project_filter,
-        component_filter,
-        banner,
-        compact,
-        include_emoji,
+        identifiers: Sequence[str] | None,
+        view: str,
+        project_filter: Sequence[str] | None,
+        component_filter: Sequence[str] | None,
+        banner: bool,
+        compact: bool | None,
+        include_emoji: bool,
     ) -> None:
         captured["ctx"] = ctx
         captured["identifiers"] = identifiers
