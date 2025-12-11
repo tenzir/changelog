@@ -1,0 +1,6 @@
+created: 2025-12-11
+title: Tenzir Changelog v0.11.1
+intro: >-
+  This patch release improves the CLI display with better card view styling and author
+  formatting. The card view now displays type-colored borders and properly formats
+  non-GitHub authors without the @ prefix for improved readability.
