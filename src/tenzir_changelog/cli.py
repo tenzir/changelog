@@ -3233,6 +3233,7 @@ def render_release_notes(
 @click.argument("identifier")
 @click.option(
     "-m",
+    "--markdown",
     "format_choice",
     flag_value="markdown",
     default="markdown",
@@ -3240,6 +3241,7 @@ def render_release_notes(
 )
 @click.option(
     "-j",
+    "--json",
     "format_choice",
     flag_value="json",
     help="Render notes as JSON.",
