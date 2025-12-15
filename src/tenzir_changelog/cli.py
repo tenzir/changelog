@@ -285,6 +285,34 @@ def _parse_pr_numbers(metadata: Mapping[str, Any]) -> list[int]:
     return pr_numbers
 
 
+def _build_prs_structured(
+    metadata: Mapping[str, Any], repository: str | None
+) -> list[dict[str, object]]:
+    """Build structured PR objects with optional URLs for JSON export."""
+    prs_list = _parse_pr_numbers(metadata)
+    result: list[dict[str, object]] = []
+    for pr_num in prs_list:
+        pr_obj: dict[str, object] = {"number": pr_num}
+        if repository:
+            pr_obj["url"] = f"https://github.com/{repository}/pull/{pr_num}"
+        result.append(pr_obj)
+    return result
+
+
+def _build_authors_structured(metadata: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Build structured author objects with URLs for JSON export."""
+    raw_authors = metadata.get("authors") or []
+    result: list[dict[str, str]] = []
+    for author in raw_authors:
+        if " " in author:
+            # Full name, not a GitHub handle
+            result.append({"name": author})
+        else:
+            # GitHub handle
+            result.append({"handle": author, "url": f"https://github.com/{author}"})
+    return result
+
+
 def _entries_table_layout(
     console_width: int, include_component: bool
 ) -> tuple[list[str], dict[str, ColumnSpec]]:
@@ -1832,6 +1860,8 @@ def _export_multi_project_unreleased_json(projects: list[tuple[Path, Config]]) -
                     "title": entry.title,
                     "body": entry.body,
                     "created": entry.created_at.isoformat() if entry.created_at else None,
+                    "prs": _build_prs_structured(entry.metadata, config.repository),
+                    "authors": _build_authors_structured(entry.metadata),
                 }
                 for entry in unreleased
             ],
@@ -1847,13 +1877,15 @@ def _export_multi_project_release_json(multi_release: Any) -> dict[str, Any]:
     result: dict[str, Any] = {"version": multi_release.version, "projects": []}
 
     for project_root, manifest, entries in multi_release.projects:
-        # Get project name
+        # Get project name and config
         project_name = (
             manifest.title if manifest.title and manifest.title != manifest.version else "Project"
         )
+        repository: str | None = None
         try:
             cfg = load_project_config(project_root)
             project_name = cfg.name
+            repository = cfg.repository
         except Exception:
             pass
 
@@ -1869,6 +1901,8 @@ def _export_multi_project_release_json(multi_release: Any) -> dict[str, Any]:
                     "title": entry.title,
                     "body": entry.body,
                     "created": entry.created_at.isoformat() if entry.created_at else None,
+                    "prs": _build_prs_structured(entry.metadata, repository),
+                    "authors": _build_authors_structured(entry.metadata),
                 }
                 for entry in entries
             ],
@@ -2205,17 +2239,17 @@ def _entry_to_dict(
     compact: bool = False,
 ) -> dict[str, object]:
     metadata = entry.metadata
-    prs_list = _parse_pr_numbers(metadata)
     entry_type = metadata.get("type", DEFAULT_ENTRY_TYPE)
     title = metadata.get("title", "Untitled")
+
     data = {
         "id": entry.entry_id,
         "title": title,
         "type": entry_type,
         "created": entry.created_at.isoformat() if entry.created_at else None,
         "project": entry.project or config.id,
-        "prs": prs_list,
-        "authors": metadata.get("authors") or [],
+        "prs": _build_prs_structured(metadata, config.repository),
+        "authors": _build_authors_structured(metadata),
         "version": version,
         "body": entry.body,
     }

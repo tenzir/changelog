@@ -404,13 +404,13 @@ def test_add_initializes_and_release(tmp_path: Path) -> None:
     assert breaking_entry["title"] == "Remove legacy API"
     assert breaking_entry["type"] == "breaking"
     assert breaking_entry["version"] == "v1.0.0"
-    assert breaking_entry["authors"] == ["codex"]
+    assert breaking_entry["authors"] == [{"handle": "codex", "url": "https://github.com/codex"}]
     assert breaking_entry.get("excerpt") == "Removes the deprecated ingest API to prepare for v1."
     feature_entry = next(
         entry for entry in payload["entries"] if entry["title"] == "Exciting Feature"
     )
     assert feature_entry["version"] == "v1.0.0"
-    assert feature_entry["prs"] == [42]
+    assert feature_entry["prs"] == [{"number": 42}]
     assert "pr" not in feature_entry
     assert feature_entry["project"] == "project"
     assert feature_entry.get("excerpt") == "Adds an exciting capability."
@@ -418,7 +418,7 @@ def test_add_initializes_and_release(tmp_path: Path) -> None:
     bugfix_entry = next(
         entry for entry in payload["entries"] if entry["title"] == "Fix ingest crash"
     )
-    assert bugfix_entry["prs"] == [102, 115]
+    assert bugfix_entry["prs"] == [{"number": 102}, {"number": 115}]
     assert bugfix_entry["project"] == "project"
     assert bugfix_entry.get("excerpt") == "Resolves ingest worker crash when tokens expire."
     assert payload.get("compact") is True
@@ -438,7 +438,7 @@ def test_add_initializes_and_release(tmp_path: Path) -> None:
     assert single_payload["title"] == f"Entry {feature_entry_id}"
     assert single_payload["project"] == "project"
     assert single_payload["entries"][0]["id"] == feature_entry_id
-    assert single_payload["entries"][0]["prs"] == [42]
+    assert single_payload["entries"][0]["prs"] == [{"number": 42}]
     assert single_payload["entries"][0]["title"] == "Exciting Feature"
     assert single_payload["created"] == parsed_entry.created_at.isoformat()
 
@@ -490,7 +490,7 @@ def test_add_initializes_and_release(tmp_path: Path) -> None:
     plain_feature = next(
         entry for entry in payload_plain["entries"] if entry["title"] == "Exciting Feature"
     )
-    assert plain_feature["prs"] == [42]
+    assert plain_feature["prs"] == [{"number": 42}]
     assert all("🚀" not in entry["title"] for entry in payload_plain["entries"])
     assert all("💥" not in entry["title"] for entry in payload_plain["entries"])
 
