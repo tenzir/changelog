@@ -314,7 +314,7 @@ def _build_authors_structured(metadata: Mapping[str, Any]) -> list[dict[str, str
 
 
 def _entries_table_layout(
-    console_width: int, include_component: bool
+    console_width: int, include_component: bool, include_project: bool = False
 ) -> tuple[list[str], dict[str, ColumnSpec]]:
     """Return the visible columns and their specs for the current terminal width."""
 
@@ -438,6 +438,31 @@ def _entries_table_layout(
                 "max_width": 12,
                 "no_wrap": True,
                 "overflow": "fold",
+            }
+    # Inject project column after num when in module mode
+    if include_project:
+        columns.insert(1, "project")
+        # Use responsive widths based on terminal width
+        if width < 80:
+            specs["project"] = {
+                "min_width": 6,
+                "max_width": 12,
+                "overflow": "ellipsis",
+                "no_wrap": True,
+            }
+        elif width < 120:
+            specs["project"] = {
+                "min_width": 8,
+                "max_width": 14,
+                "overflow": "ellipsis",
+                "no_wrap": True,
+            }
+        else:
+            specs["project"] = {
+                "min_width": 10,
+                "max_width": 18,
+                "overflow": "ellipsis",
+                "no_wrap": True,
             }
     return columns, specs
 
@@ -1222,18 +1247,50 @@ def _render_entries_multi_project(
         log_info("No entries found across all projects.")
         return
 
-    # Create table with Project column
+    project_order = {config.id: index for index, (_, config) in enumerate(projects)}
+
+    # Use the unified layout with project column enabled
+    include_component = any(multi.entry.components for multi in entries)
+    visible_columns, column_specs = _entries_table_layout(
+        console.size.width, include_component, include_project=True
+    )
+
     table_width = max(console.size.width, 40)
     table = Table(show_lines=False, expand=False, width=table_width, pad_edge=False)
 
-    project_order = {config.id: index for index, (_, config) in enumerate(projects)}
-
-    # Add columns
-    table.add_column("#", style="dim", justify="right", no_wrap=True)
-    table.add_column("Project", style="cyan", no_wrap=True)
-    table.add_column("Date", style="yellow", no_wrap=True)
-    table.add_column("Title", style="bold")
-    table.add_column("Type", style="magenta", justify="center", no_wrap=True)
+    # Add columns using the same logic as _render_entries
+    if "num" in visible_columns:
+        _add_table_column(
+            table, "#", "num", column_specs, style="dim", justify="right", no_wrap_default=True
+        )
+    if "project" in visible_columns:
+        _add_table_column(
+            table, "Project", "project", column_specs, style="cyan", no_wrap_default=True
+        )
+    if "date" in visible_columns:
+        _add_table_column(
+            table, "Date", "date", column_specs, style="yellow", no_wrap_default=True
+        )
+    if "version" in visible_columns:
+        _add_table_column(
+            table, "Version", "version", column_specs, style="cyan", justify="center", no_wrap_default=True
+        )
+    if "title" in visible_columns:
+        _add_table_column(table, "Title", "title", column_specs, style="bold")
+    if "type" in visible_columns:
+        _add_table_column(
+            table, "Type", "type", column_specs, style="magenta", justify="center", no_wrap_default=True
+        )
+    if "component" in visible_columns:
+        _add_table_column(
+            table, "Component", "component", column_specs, style="green", justify="center", no_wrap_default=True
+        )
+    if "prs" in visible_columns:
+        _add_table_column(table, "PRs", "prs", column_specs, style="yellow", no_wrap_default=True)
+    if "authors" in visible_columns:
+        _add_table_column(table, "Authors", "authors", column_specs, style="blue")
+    if "id" in visible_columns:
+        _add_table_column(table, "ID", "id", column_specs, style="cyan", no_wrap_default=True)
 
     # Reference date for computing reverse datetime (larger value = older date)
     reference = datetime(9999, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
@@ -1251,9 +1308,10 @@ def _render_entries_multi_project(
     # Add rows
     for index, multi_entry in enumerate(sorted_entries, 1):
         entry = multi_entry.entry
+        metadata = entry.metadata
         project_name = multi_entry.project_name
         created_display = entry.created_date.isoformat() if entry.created_date else "—"
-        type_value = entry.metadata.get("type", "change")
+        type_value = metadata.get("type", "change")
 
         if include_emoji:
             glyph = ENTRY_TYPE_EMOJIS.get(type_value, "•")
@@ -1261,15 +1319,39 @@ def _render_entries_multi_project(
             glyph = type_value[:1].upper() if type_value else "?"
 
         type_display = Text(glyph, style=ENTRY_TYPE_STYLES.get(type_value, ""))
-        title_text = entry.metadata.get("title", "Untitled")
 
-        table.add_row(
-            str(index),
-            project_name,
-            created_display,
-            title_text,
-            type_display,
-        )
+        row: list[RenderableType] = []
+        if "num" in visible_columns:
+            row.append(str(index))
+        if "project" in visible_columns:
+            row.append(_ellipsis_cell(project_name, "project", column_specs, style="cyan"))
+        if "date" in visible_columns:
+            row.append(created_display)
+        if "version" in visible_columns:
+            row.append("—")  # Version not available in multi-project mode
+        if "title" in visible_columns:
+            row.append(_ellipsis_cell(metadata.get("title", "Untitled"), "title", column_specs))
+        if "type" in visible_columns:
+            row.append(type_display)
+        if "component" in visible_columns:
+            component_value = ", ".join(entry.components) if entry.components else "—"
+            row.append(_ellipsis_cell(component_value, "component", column_specs))
+        if "prs" in visible_columns:
+            pr_numbers = _parse_pr_numbers(metadata)
+            pr_display = ", ".join(f"#{pr}" for pr in pr_numbers) if pr_numbers else "—"
+            row.append(_ellipsis_cell(pr_display, "prs", column_specs))
+        if "authors" in visible_columns:
+            row.append(
+                _ellipsis_cell(
+                    ", ".join(metadata.get("authors") or []) or "—",
+                    "authors",
+                    column_specs,
+                )
+            )
+        if "id" in visible_columns:
+            row.append(_ellipsis_cell(entry.entry_id, "id", column_specs, style="cyan"))
+
+        table.add_row(*row)
 
     _print_renderable(table)
 
