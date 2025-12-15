@@ -2546,10 +2546,6 @@ def _render_release_notes(
             title = entry.metadata.get("title", "Untitled")
             lines.append(f"### {title}")
             lines.append("")
-            if entry.components:
-                components_display = ", ".join(f"`{c}`" for c in entry.components)
-                lines.append(f"**Components:** {components_display}")
-                lines.append("")
             body = entry.body.strip()
             if body:
                 lines.append(body)
@@ -3553,10 +3549,6 @@ def _export_markdown_release(
             title = metadata.get("title", "Untitled")
             lines.append(f"### {title}")
             lines.append("")
-            if entry.components:
-                components_display = ", ".join(f"`{c}`" for c in entry.components)
-                lines.append(f"**Components:** {components_display}")
-                lines.append("")
             body = entry.body.strip()
             if body:
                 lines.append(body)

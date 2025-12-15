@@ -1325,7 +1325,6 @@ def test_component_filtering(tmp_path: Path) -> None:
         ],
     )
     assert markdown_docs.exit_code == 0, markdown_docs.output
-    assert "**Components:** `docs`" in markdown_docs.output
     assert "CLI Entry" not in markdown_docs.output
 
     json_docs = runner.invoke(
