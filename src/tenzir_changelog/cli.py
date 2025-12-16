@@ -1766,59 +1766,65 @@ def _show_entries_export(
     explicit_links: bool,
     component_filter: tuple[str, ...],
 ) -> None:
-    if not identifiers:
-        raise click.ClickException("Provide at least one identifier for markdown or json output.")
-
     config = ctx.ensure_config()
     project_root = ctx.project_root
     components = _normalize_component_filters(component_filter, config)
     entry_map, _, _, sorted_entries = _gather_entry_context(project_root)
-    resolutions = _resolve_identifiers_sequence(
-        identifiers,
-        project_root=project_root,
-        config=config,
-        sorted_entries=sorted_entries,
-        entry_map=entry_map,
-    )
 
     compact_flag = config.export_style == EXPORT_STYLE_COMPACT if compact is None else compact
     release_index_export = build_entry_release_index(project_root, project=config.id)
     manifest_for_export: ReleaseManifest | None = None
 
-    if len(resolutions) == 1 and resolutions[0].kind == "release":
-        manifest_for_export = resolutions[0].manifest
-
-    ordered_entries: dict[str, Entry] = {}
-    for resolution in resolutions:
-        for entry in resolution.entries:
-            if entry.entry_id not in ordered_entries:
-                ordered_entries[entry.entry_id] = entry
-    filtered_entries = _filter_entries_by_component(ordered_entries.values(), components)
-    export_entries = sort_entries_desc(filtered_entries)
-    if not export_entries:
-        raise click.ClickException(
-            "No entries matched the provided identifiers and component filters for export."
+    if identifiers:
+        resolutions = _resolve_identifiers_sequence(
+            identifiers,
+            project_root=project_root,
+            config=config,
+            sorted_entries=sorted_entries,
+            entry_map=entry_map,
         )
 
-    if len(resolutions) == 1 and resolutions[0].kind == "unreleased":
-        fallback_heading = "Unreleased Changes"
-        fallback_created = None
-    elif manifest_for_export is not None:
-        fallback_heading = (
-            resolutions[0].manifest.title
-            if resolutions[0].manifest and resolutions[0].manifest.title
-            else resolutions[0].identifier
-        )
-        fallback_created = None
-    else:
-        if len(resolutions) == 1 and resolutions[0].kind in {"entry", "row"}:
-            entry = export_entries[0]
-            fallback_heading = f"Entry {entry.entry_id}"
-            fallback_created = entry.created_at
+        if len(resolutions) == 1 and resolutions[0].kind == "release":
+            manifest_for_export = resolutions[0].manifest
+
+        ordered_entries: dict[str, Entry] = {}
+        for resolution in resolutions:
+            for entry in resolution.entries:
+                if entry.entry_id not in ordered_entries:
+                    ordered_entries[entry.entry_id] = entry
+        filtered_entries = _filter_entries_by_component(ordered_entries.values(), components)
+        export_entries = sort_entries_desc(filtered_entries)
+
+        if len(resolutions) == 1 and resolutions[0].kind == "unreleased":
+            fallback_heading = "Unreleased Changes"
+            fallback_created = None
+        elif manifest_for_export is not None:
+            fallback_heading = (
+                resolutions[0].manifest.title
+                if resolutions[0].manifest and resolutions[0].manifest.title
+                else resolutions[0].identifier
+            )
+            fallback_created = None
+        elif len(resolutions) == 1 and resolutions[0].kind in {"entry", "row"} and export_entries:
+            first_entry = export_entries[0]
+            fallback_heading = f"Entry {first_entry.entry_id}"
+            fallback_created = first_entry.created_at
         else:
             fallback_heading = "Selected Entries"
             dates = [entry.created_at for entry in export_entries if entry.created_at]
             fallback_created = min(dates) if dates else None
+    else:
+        # No identifiers: export all entries
+        filtered_entries = _filter_entries_by_component(sorted_entries, components)
+        export_entries = sort_entries_desc(filtered_entries)
+        fallback_heading = "All Entries"
+        dates = [entry.created_at for entry in export_entries if entry.created_at]
+        fallback_created = min(dates) if dates else None
+
+    if not export_entries:
+        raise click.ClickException(
+            "No entries matched the provided identifiers and component filters for export."
+        )
 
     if view == "markdown":
         if compact_flag:
