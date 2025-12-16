@@ -233,5 +233,3 @@ def build_entry_release_index(
     for versions in index.values():
         versions.sort()
     return index
-
-

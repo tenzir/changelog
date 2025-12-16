@@ -175,5 +175,3 @@ def save_config(config: Config, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(dump_config(config), handle, sort_keys=False)
-
-

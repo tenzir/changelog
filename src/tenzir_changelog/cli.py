@@ -1236,22 +1236,38 @@ def _render_entries_multi_project(
             table, "Project", "project", column_specs, style="cyan", no_wrap_default=True
         )
     if "date" in visible_columns:
-        _add_table_column(
-            table, "Date", "date", column_specs, style="yellow", no_wrap_default=True
-        )
+        _add_table_column(table, "Date", "date", column_specs, style="yellow", no_wrap_default=True)
     if "version" in visible_columns:
         _add_table_column(
-            table, "Version", "version", column_specs, style="cyan", justify="center", no_wrap_default=True
+            table,
+            "Version",
+            "version",
+            column_specs,
+            style="cyan",
+            justify="center",
+            no_wrap_default=True,
         )
     if "title" in visible_columns:
         _add_table_column(table, "Title", "title", column_specs, style="bold")
     if "type" in visible_columns:
         _add_table_column(
-            table, "Type", "type", column_specs, style="magenta", justify="center", no_wrap_default=True
+            table,
+            "Type",
+            "type",
+            column_specs,
+            style="magenta",
+            justify="center",
+            no_wrap_default=True,
         )
     if "component" in visible_columns:
         _add_table_column(
-            table, "Component", "component", column_specs, style="green", justify="center", no_wrap_default=True
+            table,
+            "Component",
+            "component",
+            column_specs,
+            style="green",
+            justify="center",
+            no_wrap_default=True,
         )
     if "prs" in visible_columns:
         _add_table_column(table, "PRs", "prs", column_specs, style="yellow", no_wrap_default=True)
@@ -1707,9 +1723,7 @@ def _show_entries_card(
     config = ctx.ensure_config()
     project_root = ctx.project_root
     modules = ctx.get_modules()
-    entry_map, release_index_all, _, sorted_entries = _gather_entry_context(
-        project_root, modules
-    )
+    entry_map, release_index_all, _, sorted_entries = _gather_entry_context(project_root, modules)
     components = _normalize_component_filters(component_filter, config)
     resolutions = _resolve_identifiers_sequence(
         identifiers,
