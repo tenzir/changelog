@@ -2419,10 +2419,11 @@ def _render_release_notes_compact(
 
 
 def _compose_release_document(
+    heading: str,
     intro: Optional[str],
     release_notes: str,
 ) -> str:
-    parts: list[str] = []
+    parts: list[str] = [f"# {heading}"]
     if intro:
         intro_text = intro.strip()
         if intro_text:
@@ -2658,11 +2659,18 @@ def create_release(
         )
         if existing_notes_payload is not None:
             normalized_existing = existing_notes_payload.rstrip("\n")
+            default_title = f"{config.name} {version}"
+            if release_title and release_title != default_title:
+                heading = release_title
+            else:
+                heading = default_title
             doc_standard = _compose_release_document(
+                heading,
                 manifest_intro,
                 release_notes_standard,
             ).rstrip("\n")
             doc_compact = _compose_release_document(
+                heading,
                 manifest_intro,
                 release_notes_compact,
             ).rstrip("\n")
@@ -2682,7 +2690,12 @@ def create_release(
         intro=manifest_intro or None,
     )
 
-    readme_content = _compose_release_document(manifest.intro, release_notes)
+    default_title = f"{config.name} {version}"
+    if manifest.title and manifest.title != default_title:
+        heading = manifest.title
+    else:
+        heading = default_title
+    readme_content = _compose_release_document(heading, manifest.intro, release_notes)
 
     manifest_payload = serialize_release_manifest(manifest)
     manifest_exists = manifest_path.exists()
@@ -2899,7 +2912,16 @@ def render_release_notes(
                 explicit_links=explicit_links,
             )
         )
+        if manifest:
+            default_title = f"{config.name} {manifest.version}"
+            if manifest.title and manifest.title != default_title:
+                heading = manifest.title
+            else:
+                heading = default_title
+        else:
+            heading = config.name
         output = _compose_release_document(
+            heading,
             manifest.intro if manifest else None,
             release_body,
         )
@@ -3242,8 +3264,14 @@ def _export_markdown_release(
     lines: list[str] = []
     if not manifest:
         heading = fallback_heading or "Unreleased Changes"
-        lines.append(f"# {heading}")
-        lines.append("")
+    else:
+        default_title = f"{config.name} {manifest.version}"
+        if manifest.title and manifest.title != default_title:
+            heading = manifest.title
+        else:
+            heading = default_title
+    lines.append(f"# {heading}")
+    lines.append("")
 
     if not entries:
         lines.append("No changes found.")
@@ -3295,8 +3323,14 @@ def _export_markdown_compact(
     lines: list[str] = []
     if not manifest:
         heading = fallback_heading or "Unreleased Changes"
-        lines.append(f"# {heading}")
-        lines.append("")
+    else:
+        default_title = f"{config.name} {manifest.version}"
+        if manifest.title and manifest.title != default_title:
+            heading = manifest.title
+        else:
+            heading = default_title
+    lines.append(f"# {heading}")
+    lines.append("")
 
     if not entries:
         lines.append("No changes found.")

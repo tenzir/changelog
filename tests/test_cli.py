@@ -188,7 +188,7 @@ def test_add_initializes_and_release(tmp_path: Path) -> None:
 
     release_text = release_path.read_text(encoding="utf-8")
     first_line = release_text.lstrip().splitlines()[0]
-    assert first_line == "Welcome to the release!", release_text
+    assert first_line == "# Project v1.0.0", release_text
     assert "Welcome to the release!" in release_text
     assert "## 💥 Breaking changes" in release_text
     assert "- Removes the deprecated ingest API to prepare for v1. (by @codex)" in release_text
