@@ -450,6 +450,34 @@ def create_annotated_git_tag(project_root: Path, tag_name: str, message: str) ->
     return True
 
 
+def has_staged_changes(project_root: Path) -> bool:
+    """Check if there are staged changes to commit."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=str(project_root),
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "git is required to check for staged changes but was not found in PATH."
+        ) from exc
+    return result.returncode != 0
+
+
+def create_git_commit(project_root: Path, message: str) -> None:
+    """Create a git commit with the given message."""
+    try:
+        subprocess.run(
+            ["git", "commit", "-m", message],
+            cwd=str(project_root),
+            check=True,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("git is required to create commits but was not found in PATH.") from exc
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"git failed to create commit (exit status {exc.returncode}).") from exc
+
+
 def _select_remote_name(project_root: Path, repository: str | None) -> str:
     """Return the git remote name matching the configured repository."""
     try:

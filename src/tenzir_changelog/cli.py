@@ -66,6 +66,8 @@ from .utils import (
     INFO_PREFIX,
     WARNING,
     create_annotated_git_tag,
+    create_git_commit,
+    has_staged_changes,
     abort_on_user_interrupt,
     configure_logging,
     console,
@@ -3027,7 +3029,10 @@ def publish_release(
     version: str,
     draft: bool,
     prerelease: bool,
+    no_latest: bool,
     create_tag: bool,
+    create_commit: bool,
+    commit_message: str | None,
     assume_yes: bool,
 ) -> None:
     """Python wrapper around the ``release publish`` command."""
@@ -3059,6 +3064,23 @@ def publish_release(
     notes_content = notes_path.read_text(encoding="utf-8").strip()
     if not notes_content:
         raise click.ClickException("Release notes are empty; aborting publish.")
+
+    if create_commit:
+        if not create_tag:
+            raise click.ClickException("--commit requires --tag to be specified.")
+        if not has_staged_changes(project_root):
+            raise click.ClickException(
+                "No staged changes to commit. Stage changes with 'git add' first."
+            )
+        # Determine commit message: CLI flag > config > default
+        final_commit_message = commit_message or config.release.commit_message.format(
+            version=manifest.version
+        )
+        try:
+            create_git_commit(project_root, final_commit_message)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from exc
+        log_success(f"created commit: {final_commit_message}")
 
     if create_tag:
         tag_message = f"Release {manifest.version}"
@@ -3115,6 +3137,8 @@ def publish_release(
             command.append("--draft")
         if prerelease:
             command.append("--prerelease")
+        if no_latest:
+            command.append("--latest=false")
         confirmation_action = "gh release create"
 
     if not assume_yes:
@@ -3158,10 +3182,25 @@ def publish_release(
     help="Mark the GitHub release as a prerelease.",
 )
 @click.option(
+    "--no-latest",
+    is_flag=True,
+    help="Prevent GitHub from marking this as the latest release.",
+)
+@click.option(
     "--tag",
     "create_tag",
     is_flag=True,
     help="Create an annotated git tag before publishing.",
+)
+@click.option(
+    "--commit",
+    "create_commit",
+    is_flag=True,
+    help="Commit staged changes before creating the tag.",
+)
+@click.option(
+    "--commit-message",
+    help="Custom commit message (default: from config or 'Release {version}').",
 )
 @click.option(
     "--yes",
@@ -3175,7 +3214,10 @@ def release_publish_cmd(
     version: str,
     draft: bool,
     prerelease: bool,
+    no_latest: bool,
     create_tag: bool,
+    create_commit: bool,
+    commit_message: str | None,
     assume_yes: bool,
 ) -> None:
     """Publish a release to GitHub using the gh CLI."""
@@ -3185,7 +3227,10 @@ def release_publish_cmd(
         version=version,
         draft=draft,
         prerelease=prerelease,
+        no_latest=no_latest,
         create_tag=create_tag,
+        create_commit=create_commit,
+        commit_message=commit_message,
         assume_yes=assume_yes,
     )
 

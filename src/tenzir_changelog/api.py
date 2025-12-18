@@ -153,7 +153,10 @@ class Changelog:
         version: str,
         draft: bool = False,
         prerelease: bool = False,
+        no_latest: bool = False,
         create_tag: bool = False,
+        create_commit: bool = False,
+        commit_message: str | None = None,
         assume_yes: bool = False,
     ) -> None:
         """Publish a release to GitHub using the same workflow as the CLI."""
@@ -163,7 +166,10 @@ class Changelog:
             version=version,
             draft=draft,
             prerelease=prerelease,
+            no_latest=no_latest,
             create_tag=create_tag,
+            create_commit=create_commit,
+            commit_message=commit_message,
             assume_yes=assume_yes,
         )
 

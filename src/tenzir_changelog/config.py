@@ -35,6 +35,13 @@ def package_metadata_path(project_root: Path) -> Path:
 
 
 @dataclass
+class ReleaseConfig:
+    """Configuration for release operations."""
+
+    commit_message: str = "Release {version}"
+
+
+@dataclass
 class Config:
     """Structured representation of the changelog config."""
 
@@ -45,6 +52,7 @@ class Config:
     export_style: ExportStyle = EXPORT_STYLE_STANDARD
     components: dict[str, str] = field(default_factory=dict)
     modules: str | None = None  # glob pattern for nested changelog projects
+    release: ReleaseConfig = field(default_factory=ReleaseConfig)
 
 
 def load_config(path: Path) -> Config:
@@ -80,6 +88,16 @@ def load_config(path: Path) -> Config:
     modules_raw = raw.get("modules")
     modules = str(modules_raw).strip() if modules_raw else None
 
+    # Parse release config
+    release_config = ReleaseConfig()
+    release_raw = raw.get("release")
+    if release_raw is not None:
+        if not isinstance(release_raw, MutableMapping):
+            raise ValueError("Config option 'release' must be a mapping.")
+        commit_message = release_raw.get("commit_message")
+        if commit_message is not None:
+            release_config = ReleaseConfig(commit_message=str(commit_message))
+
     return Config(
         id=project_value,
         name=str(name_raw or "Unnamed Project"),
@@ -88,6 +106,7 @@ def load_config(path: Path) -> Config:
         export_style=export_style,
         components=components,
         modules=modules,
+        release=release_config,
     )
 
 
@@ -124,6 +143,16 @@ def load_package_config(path: Path) -> Config:
     modules_raw = raw.get("modules")
     modules = str(modules_raw).strip() if modules_raw else None
 
+    # Parse release config
+    release_config = ReleaseConfig()
+    release_raw = raw.get("release")
+    if release_raw is not None:
+        if not isinstance(release_raw, MutableMapping):
+            raise ValueError("Package metadata option 'release' must be a mapping.")
+        commit_message = release_raw.get("commit_message")
+        if commit_message is not None:
+            release_config = ReleaseConfig(commit_message=str(commit_message))
+
     return Config(
         id=package_id,
         name=package_name,
@@ -132,6 +161,7 @@ def load_package_config(path: Path) -> Config:
         export_style=export_style,
         components=components,
         modules=modules,
+        release=release_config,
     )
 
 
@@ -167,6 +197,8 @@ def dump_config(config: Config) -> dict[str, Any]:
         data["components"] = dict(config.components)
     if config.modules:
         data["modules"] = config.modules
+    if config.release.commit_message != "Release {version}":
+        data["release"] = {"commit_message": config.release.commit_message}
     return data
 
 
