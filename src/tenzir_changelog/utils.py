@@ -37,12 +37,13 @@ _LOGGER_NAME = "tenzir_changelog"
 _LOGGER = logging.getLogger(_LOGGER_NAME)
 
 console = Console(
+    stderr=True,
     theme=Theme(
         {
             "markdown.code": Style(bold=True, color="cyan"),
             "markdown.code_block": Style(color="cyan"),
         }
-    )
+    ),
 )
 
 

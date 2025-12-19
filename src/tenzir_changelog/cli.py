@@ -2999,6 +2999,9 @@ def create_release(
     else:
         log_success(f"updated release metadata for {version}.")
 
+    # Output version to stdout for scripting (e.g., VERSION=$(tenzir-changelog release create ...))
+    click.echo(version)
+
 
 @release_group.command("create")
 @click.argument("version", required=False)
