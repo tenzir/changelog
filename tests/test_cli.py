@@ -403,13 +403,11 @@ def test_add_initializes_and_release(tmp_path: Path) -> None:
     breaking_entry = payload["entries"][0]
     assert breaking_entry["title"] == "Remove legacy API"
     assert breaking_entry["type"] == "breaking"
-    assert breaking_entry["version"] == "v1.0.0"
     assert breaking_entry["authors"] == [{"handle": "codex", "url": "https://github.com/codex"}]
     assert breaking_entry.get("excerpt") == "Removes the deprecated ingest API to prepare for v1."
     feature_entry = next(
         entry for entry in payload["entries"] if entry["title"] == "Exciting Feature"
     )
-    assert feature_entry["version"] == "v1.0.0"
     assert feature_entry["prs"] == [{"number": 42}]
     assert "pr" not in feature_entry
     assert feature_entry["project"] == "project"

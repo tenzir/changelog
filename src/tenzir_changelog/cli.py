@@ -1855,7 +1855,6 @@ def _show_entries_export(
             manifest_for_export,
             export_entries,
             config,
-            release_index_export,
             compact=compact_flag,
             fallback_heading=fallback_heading,
             fallback_created=fallback_created,
@@ -2040,7 +2039,6 @@ def _prompt_entry_type(default: str = DEFAULT_ENTRY_TYPE) -> str:
 def _entry_to_dict(
     entry: Entry,
     config: Config,
-    version: str | None = None,
     *,
     compact: bool = False,
 ) -> dict[str, object]:
@@ -2056,7 +2054,6 @@ def _entry_to_dict(
         "project": entry.project or config.id,
         "prs": _build_prs_structured(metadata, config.repository),
         "authors": _build_authors_structured(metadata),
-        "version": version,
         "body": entry.body,
     }
     if entry.components:
@@ -2890,7 +2887,6 @@ def render_release_notes(
             manifest,
             entries_for_output,
             config,
-            release_index_export,
             compact=compact_flag,
             fallback_heading=fallback_heading,
             fallback_created=fallback_created,
@@ -3427,7 +3423,6 @@ def _export_json_payload(
     manifest: Optional[ReleaseManifest],
     entries: list[Entry],
     config: Config,
-    release_index: dict[str, list[str]],
     *,
     compact: bool = False,
     fallback_heading: str = "Unreleased Changes",
@@ -3467,13 +3462,7 @@ def _export_json_payload(
         )
     payload_entries = []
     for entry in ordered_entries:
-        version_candidates = release_index.get(entry.entry_id, []) or []
-        version_value: str | None
-        if manifest and manifest.version:
-            version_value = manifest.version
-        else:
-            version_value = next(iter(version_candidates), None)
-        payload_entries.append(_entry_to_dict(entry, config, version_value, compact=compact))
+        payload_entries.append(_entry_to_dict(entry, config, compact=compact))
     data["entries"] = payload_entries
     if compact:
         data["compact"] = True
