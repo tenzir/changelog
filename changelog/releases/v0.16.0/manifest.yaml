@@ -1,0 +1,6 @@
+created: 2025-12-19
+title: Module Changelog Summaries
+intro: >-
+  This release introduces aggregated module changelog summaries in release notes,
+  allowing parent projects to automatically include a summary of changes from their
+  modules. It also fixes a minor issue with redundant version fields in JSON output.

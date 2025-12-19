@@ -1,0 +1,21 @@
+# Module Changelog Summaries
+
+This release introduces aggregated module changelog summaries in release notes, allowing parent projects to automatically include a summary of changes from their modules. It also fixes a minor issue with redundant version fields in JSON output.
+
+## 🚀 Features
+
+### Aggregated module changelog summaries in release notes
+
+For projects with modules, parent releases now automatically include a summary of module changes. Each parent release manifest records the module versions at release time, enabling incremental tracking—subsequent releases only show new module entries since the previous parent release.
+
+Module summaries appear after the main changelog, separated by a horizontal rule. Each module section shows its version and lists entries in compact format: emoji prefix, title, and byline.
+
+*By @mavam and @claude.*
+
+## 🐞 Bug fixes
+
+### Remove redundant version field from JSON entry objects
+
+The JSON output of `release notes --json` previously included a redundant `version` field in each entry object. Since all entries in a release share the same version as the top-level manifest version, this duplication was unnecessary. The `version` field has been removed from individual entries, with the version information now available only at the top level of the JSON payload.
+
+*By @mavam and @claude.*
