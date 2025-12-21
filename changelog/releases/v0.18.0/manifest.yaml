@@ -1,0 +1,7 @@
+created: 2025-12-21
+title: Version-Agnostic Workflows
+intro: >-
+  This release introduces a version-agnostic release workflow that simplifies publishing
+  and CI integration, allowing commands to default to the latest release version.
+  It also improves changelog browsing by sorting module entries chronologically rather
+  than grouping them by project.
