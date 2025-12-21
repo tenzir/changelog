@@ -1,5 +1,3 @@
-# Machine-Readable Release Output
-
 This release enhances shell scripting capabilities by making `release create`
 output the version to stdout. All Rich UI elements now go to stderr, enabling
 clean machine-readable results for automation workflows.

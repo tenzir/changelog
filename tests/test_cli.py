@@ -187,8 +187,6 @@ def test_add_initializes_and_release(tmp_path: Path) -> None:
     assert manifest_path.exists()
 
     release_text = release_path.read_text(encoding="utf-8")
-    first_line = release_text.lstrip().splitlines()[0]
-    assert first_line == "# Project v1.0.0", release_text
     assert "Welcome to the release!" in release_text
     assert "## 💥 Breaking changes" in release_text
     assert "- Removes the deprecated ingest API to prepare for v1. (by @codex)" in release_text
@@ -960,7 +958,6 @@ def test_get_unreleased_token(tmp_path: Path) -> None:
         ],
     )
     assert markdown_result.exit_code == 0, markdown_result.output
-    assert "# Unreleased Changes" in markdown_result.output
     assert "### Pending Feature" in markdown_result.output
 
     markdown_plain = runner.invoke(
@@ -990,7 +987,6 @@ def test_get_unreleased_token(tmp_path: Path) -> None:
         ],
     )
     assert markdown_dash.exit_code == 0, markdown_dash.output
-    assert "# Unreleased Changes" in markdown_dash.output
 
     json_result = runner.invoke(
         cli,
@@ -1596,7 +1592,6 @@ def test_release_notes_command(tmp_path: Path) -> None:
         ],
     )
     assert notes_unreleased.exit_code == 0, notes_unreleased.output
-    assert "Unreleased Changes" in notes_unreleased.output
     assert "Epsilon Fix" in notes_unreleased.output
 
 
