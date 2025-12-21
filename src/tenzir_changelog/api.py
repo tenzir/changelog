@@ -9,6 +9,7 @@ from typing import Any, Literal, Optional, Sequence
 from .cli import (
     CLIContext,
     ShowView,
+    _get_latest_release_manifest,
     create_cli_context,
     create_entry,
     create_release,
@@ -126,6 +127,30 @@ class Changelog:
             compact_explicit=compact is not None,
         )
 
+    def release_version(self, *, bare: bool = False) -> str:
+        """Get the latest released version.
+
+        Args:
+            bare: If True, strip the 'v' prefix from the version.
+
+        Returns:
+            The latest released version string.
+
+        Raises:
+            ValueError: If no releases exist.
+        """
+        manifest = _get_latest_release_manifest(self._ctx.project_root)
+        if manifest is None:
+            raise ValueError(
+                "No releases found. Create a release first with 'release create'."
+            )
+
+        version = manifest.version
+        if bare:
+            version = version.lstrip("vV")
+
+        return version
+
     def release_notes(
         self,
         identifier: str,
@@ -150,7 +175,7 @@ class Changelog:
     def release_publish(
         self,
         *,
-        version: str,
+        version: str | None = None,
         draft: bool = False,
         prerelease: bool = False,
         no_latest: bool = False,
@@ -159,11 +184,23 @@ class Changelog:
         commit_message: str | None = None,
         assume_yes: bool = False,
     ) -> None:
-        """Publish a release to GitHub using the same workflow as the CLI."""
+        """Publish a release to GitHub using the same workflow as the CLI.
+
+        If no version is provided, defaults to the latest release.
+        """
+
+        resolved_version = version
+        if resolved_version is None:
+            manifest = _get_latest_release_manifest(self._ctx.project_root)
+            if manifest is None:
+                raise ValueError(
+                    "No releases found. Create a release first with 'release create'."
+                )
+            resolved_version = manifest.version
 
         publish_release(
             self._ctx,
-            version=version,
+            version=resolved_version,
             draft=draft,
             prerelease=prerelease,
             no_latest=no_latest,

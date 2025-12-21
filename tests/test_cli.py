@@ -2679,3 +2679,270 @@ def test_release_create_emits_only_version_to_stdout(tmp_path: Path) -> None:
     # stdout must NOT contain status messages or ANSI codes.
     assert "manifest" not in release_result.stdout
     assert "\033[" not in release_result.stdout
+
+
+def test_release_create_rejects_non_semver_version(tmp_path: Path) -> None:
+    """Test release create enforces semantic versioning."""
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    add_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "add",
+            "--title",
+            "Test Feature",
+            "--type",
+            "feature",
+            "--description",
+            "A test feature.",
+            "--author",
+            "tester",
+        ],
+    )
+    assert add_result.exit_code == 0, add_result.output
+
+    release_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "create",
+            "not-a-version",
+            "--yes",
+        ],
+    )
+    assert release_result.exit_code != 0
+    assert "valid semantic version" in release_result.output
+
+
+def test_release_version_command(tmp_path: Path) -> None:
+    """Test the release version command outputs the latest version."""
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    # Create an entry and release.
+    add_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "add",
+            "--title",
+            "Test Feature",
+            "--type",
+            "feature",
+            "--description",
+            "A test feature.",
+            "--author",
+            "tester",
+        ],
+    )
+    assert add_result.exit_code == 0, add_result.output
+
+    release_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "create",
+            "v2.0.0",
+            "--yes",
+        ],
+    )
+    assert release_result.exit_code == 0, release_result.output
+
+    # Get the version.
+    version_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "version",
+        ],
+    )
+    assert version_result.exit_code == 0, version_result.output
+    assert version_result.stdout.strip() == "v2.0.0"
+
+
+def test_release_version_bare_flag(tmp_path: Path) -> None:
+    """Test the release version --bare flag strips the v prefix."""
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    # Create an entry and release.
+    add_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "add",
+            "--title",
+            "Test Feature",
+            "--type",
+            "feature",
+            "--description",
+            "A test feature.",
+            "--author",
+            "tester",
+        ],
+    )
+    assert add_result.exit_code == 0, add_result.output
+
+    release_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "create",
+            "v3.1.4",
+            "--yes",
+        ],
+    )
+    assert release_result.exit_code == 0, release_result.output
+
+    # Get the version with --bare.
+    version_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "version",
+            "--bare",
+        ],
+    )
+    assert version_result.exit_code == 0, version_result.output
+    assert version_result.stdout.strip() == "3.1.4"
+
+
+def test_release_version_no_releases(tmp_path: Path) -> None:
+    """Test the release version command fails when no releases exist."""
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    # Initialize project without any releases.
+    add_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "add",
+            "--title",
+            "Test Feature",
+            "--type",
+            "feature",
+            "--description",
+            "A test feature.",
+            "--author",
+            "tester",
+        ],
+    )
+    assert add_result.exit_code == 0, add_result.output
+
+    # Get the version should fail.
+    version_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "version",
+        ],
+    )
+    assert version_result.exit_code != 0
+    assert "No releases found" in version_result.output
+
+
+def test_release_publish_defaults_to_latest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Test that release publish without version uses the latest release."""
+    runner = CliRunner()
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    # Create an entry and release.
+    add_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "add",
+            "--title",
+            "Test Feature",
+            "--type",
+            "feature",
+            "--description",
+            "A test feature.",
+            "--author",
+            "tester",
+        ],
+    )
+    assert add_result.exit_code == 0, add_result.output
+
+    release_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "create",
+            "v1.5.0",
+            "--yes",
+        ],
+    )
+    assert release_result.exit_code == 0, release_result.output
+
+    # Set up a config with repository so publish doesn't complain about missing repo.
+    config_path = project_dir / "config.yaml"
+    config_data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config_data["repository"] = "owner/repo"
+    config_path.write_text(yaml.safe_dump(config_data, sort_keys=False), encoding="utf-8")
+
+    # Mock the gh CLI to capture what version is being published.
+    recorded_args: list[str] = []
+    commands: list[list[str]] = []
+
+    def fake_which(command: str) -> str:
+        assert command == "gh"
+        return "/usr/bin/gh"
+
+    def fake_run(
+        args: list[str], *, check: bool, stdout: object = None, stderr: object = None
+    ) -> None:
+        nonlocal recorded_args
+        commands.append(args)
+        if len(args) >= 3 and args[1:3] == ["release", "view"]:
+            raise subprocess.CalledProcessError(returncode=1, cmd=args)
+        recorded_args = args
+
+    monkeypatch.setattr("tenzir_changelog.cli.shutil.which", fake_which)
+    monkeypatch.setattr("tenzir_changelog.cli.subprocess.run", fake_run)
+
+    # Publish without specifying version.
+    publish_result = runner.invoke(
+        cli,
+        [
+            "--root",
+            str(project_dir),
+            "release",
+            "publish",
+            "--yes",
+        ],
+    )
+    assert publish_result.exit_code == 0, publish_result.output
+
+    # Verify that gh was called with v1.5.0 (the latest release).
+    assert "v1.5.0" in recorded_args, f"Expected v1.5.0 in recorded args: {recorded_args}"
+    assert recorded_args[:3] == ["/usr/bin/gh", "release", "create"]

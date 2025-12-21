@@ -2700,6 +2700,18 @@ def _bump_version_value(base: Version, bump: str) -> Version:
     return Version(f"{major}.{minor}.{micro}")
 
 
+def _validate_semver_label(version: str) -> None:
+    value = version
+    if value.startswith(("v", "V")):
+        value = value[1:]
+    try:
+        Version(value)
+    except InvalidVersion as exc:
+        raise click.ClickException(
+            "Release version must be a valid semantic version (e.g. 1.2.3 or v1.2.3)."
+        ) from exc
+
+
 def _resolve_release_version(
     project_root: Path,
     explicit: Optional[str],
@@ -2711,6 +2723,7 @@ def _resolve_release_version(
         value = explicit.strip()
         if not value:
             raise click.ClickException("Release version cannot be empty.")
+        _validate_semver_label(value)
         return value
     if not bump:
         raise click.ClickException(
@@ -3063,6 +3076,29 @@ def release_create_cmd(
         title_explicit=title_explicit,
         compact_explicit=compact_explicit,
     )
+
+
+@release_group.command("version")
+@click.option(
+    "--bare",
+    is_flag=True,
+    help="Print version without 'v' prefix.",
+)
+@click.pass_obj
+def release_version_cmd(ctx: CLIContext, bare: bool) -> None:
+    """Print the latest released version."""
+
+    manifest = _get_latest_release_manifest(ctx.project_root)
+    if manifest is None:
+        raise click.ClickException(
+            "No releases found. Create a release first with 'release create'."
+        )
+
+    version = manifest.version
+    if bare:
+        version = version.lstrip("vV")
+
+    emit_output(version)
 
 
 def render_release_notes(
@@ -3446,7 +3482,7 @@ def publish_release(
 
 
 @release_group.command("publish")
-@click.argument("version")
+@click.argument("version", required=False)
 @click.option(
     "--draft/--no-draft",
     default=False,
@@ -3487,7 +3523,7 @@ def publish_release(
 @click.pass_obj
 def release_publish_cmd(
     ctx: CLIContext,
-    version: str,
+    version: Optional[str],
     draft: bool,
     prerelease: bool,
     no_latest: bool,
@@ -3496,11 +3532,23 @@ def release_publish_cmd(
     commit_message: str | None,
     assume_yes: bool,
 ) -> None:
-    """Publish a release to GitHub using the gh CLI."""
+    """Publish a release to GitHub using the gh CLI.
+
+    If no version is provided, defaults to the latest release.
+    """
+
+    resolved_version = version
+    if resolved_version is None:
+        manifest = _get_latest_release_manifest(ctx.project_root)
+        if manifest is None:
+            raise click.ClickException(
+                "No releases found. Create a release first with 'release create'."
+            )
+        resolved_version = manifest.version
 
     publish_release(
         ctx,
-        version=version,
+        version=resolved_version,
         draft=draft,
         prerelease=prerelease,
         no_latest=no_latest,
