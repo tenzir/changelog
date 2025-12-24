@@ -108,6 +108,7 @@ class Changelog:
         release_date: Optional[datetime] = None,
         intro_file: Optional[Path] = None,
         compact: Optional[bool] = None,
+        explicit_links: bool = False,
         assume_yes: bool = False,
         version_bump: Optional[str] = None,
     ) -> None:
@@ -121,6 +122,7 @@ class Changelog:
             release_date=release_date,
             intro_file=intro_file,
             compact=compact,
+            explicit_links=explicit_links,
             assume_yes=assume_yes,
             version_bump=version_bump,
             title_explicit=title is not None,

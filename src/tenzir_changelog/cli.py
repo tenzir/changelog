@@ -11,7 +11,18 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from importlib.metadata import PackageNotFoundError, version as metadata_version
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional, Sequence, TypedDict, Literal, cast
+from typing import (
+    Any,
+    Callable,
+    Iterable,
+    Mapping,
+    Optional,
+    Sequence,
+    TypedDict,
+    Literal,
+    TypeVar,
+    cast,
+)
 
 import click
 from click.core import ParameterSource
@@ -86,6 +97,8 @@ from .utils import (
     push_git_tag,
     slugify,
 )
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 __all__ = [
     "cli",
@@ -230,6 +243,56 @@ ENTRY_EXPORT_ORDER = ("breaking", "feature", "change", "bugfix")
 UNRELEASED_IDENTIFIER = "unreleased"
 DASH_IDENTIFIER = "-"
 DEFAULT_PROJECT_ID = "changelog"
+
+
+def compact_option() -> Callable[[F], F]:
+    """Shared --compact/--no-compact option for release formatting commands.
+
+    Controls whether to use the compact bullet-list format (--compact) or
+    the detailed section-based format (--no-compact) when rendering release
+    notes and changelog entries.
+
+    Used by: release create, release notes
+
+    IMPORTANT: Keep this decorator in sync with all commands that render
+    release notes to ensure consistent behavior.
+    """
+
+    def decorator(f: F) -> F:
+        return click.option(
+            "--compact/--no-compact",
+            default=None,
+            help="Use the compact layout when rendering Markdown.",
+        )(f)
+
+    return decorator
+
+
+def explicit_links_option() -> Callable[[F], F]:
+    """Shared --explicit-links option for Markdown rendering commands.
+
+    When enabled, converts GitHub shorthand (@mentions and #PR references)
+    to explicit Markdown links. Examples:
+    - @username -> [@username](https://github.com/username)
+    - #123 -> [#123](https://github.com/owner/repo/pull/123)
+
+    Useful for exporting release notes to documentation sites or other
+    Markdown renderers that don't automatically link GitHub references.
+
+    Used by: release create, release notes, show
+
+    IMPORTANT: Keep this decorator in sync with all commands that render
+    release notes to ensure consistent behavior.
+    """
+
+    def decorator(f: F) -> F:
+        return click.option(
+            "--explicit-links",
+            is_flag=True,
+            help="Render @mentions and PR references as explicit Markdown links.",
+        )(f)
+
+    return decorator
 
 
 IdentifierKind = Literal["row", "entry", "release", "unreleased"]
@@ -2752,6 +2815,7 @@ def create_release(
     release_date: Optional[datetime],
     intro_file: Optional[Path],
     compact: Optional[bool],
+    explicit_links: bool = False,
     assume_yes: bool,
     version_bump: Optional[str],
     title_explicit: bool,
@@ -2851,9 +2915,11 @@ def create_release(
         else date.today()
     )
 
-    release_notes_standard = _render_release_notes(entries_sorted, config, include_emoji=True)
+    release_notes_standard = _render_release_notes(
+        entries_sorted, config, include_emoji=True, explicit_links=explicit_links
+    )
     release_notes_compact = _render_release_notes_compact(
-        entries_sorted, config, include_emoji=True
+        entries_sorted, config, include_emoji=True, explicit_links=explicit_links
     )
 
     if compact_explicit:
@@ -2917,6 +2983,7 @@ def create_release(
                     entries,
                     module_config,
                     include_emoji=True,
+                    explicit_links=explicit_links,
                 )
                 if module_body:
                     version = current_module_versions.get(module_id, "")
@@ -3012,11 +3079,9 @@ def create_release(
     type=click.Path(path_type=Path, dir_okay=False),
     help="Markdown file containing introductory notes for the release.",
 )
-@click.option(
-    "--compact/--no-compact",
-    default=None,
-    help="Render release notes in the compact format.",
-)
+# Options shared with `release notes`
+@compact_option()
+@explicit_links_option()
 @click.option(
     "--yes",
     "assume_yes",
@@ -3051,6 +3116,7 @@ def release_create_cmd(
     release_date: Optional[datetime],
     intro_file: Optional[Path],
     compact: Optional[bool],
+    explicit_links: bool,
     assume_yes: bool,
     version_bump: Optional[str],
 ) -> None:
@@ -3067,6 +3133,7 @@ def release_create_cmd(
         release_date=release_date,
         intro_file=intro_file,
         compact=compact,
+        explicit_links=explicit_links,
         assume_yes=assume_yes,
         version_bump=version_bump,
         title_explicit=title_explicit,
@@ -3280,21 +3347,14 @@ def render_release_notes(
     flag_value="json",
     help="Render notes as JSON.",
 )
-@click.option(
-    "--compact/--no-compact",
-    default=None,
-    help="Use the compact layout when rendering Markdown.",
-)
+# Options shared with `release create`
+@compact_option()
 @click.option(
     "--no-emoji",
     is_flag=True,
     help="Disable type emoji in Markdown output.",
 )
-@click.option(
-    "--explicit-links",
-    is_flag=True,
-    help="Render @mentions and PR references as explicit Markdown links.",
-)
+@explicit_links_option()
 @click.pass_obj
 def release_notes_cmd(
     ctx: CLIContext,
