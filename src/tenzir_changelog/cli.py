@@ -269,7 +269,7 @@ def compact_option() -> Callable[[F], F]:
 
 
 def explicit_links_option() -> Callable[[F], F]:
-    """Shared --explicit-links option for Markdown rendering commands.
+    """Shared --explicit-links/--no-explicit-links option for Markdown rendering.
 
     When enabled, converts GitHub shorthand (@mentions and #PR references)
     to explicit Markdown links. Examples:
@@ -279,6 +279,8 @@ def explicit_links_option() -> Callable[[F], F]:
     Useful for exporting release notes to documentation sites or other
     Markdown renderers that don't automatically link GitHub references.
 
+    When neither flag is specified, uses the config.explicit_links setting.
+
     Used by: release create, release notes, show
 
     IMPORTANT: Keep this decorator in sync with all commands that render
@@ -287,8 +289,8 @@ def explicit_links_option() -> Callable[[F], F]:
 
     def decorator(f: F) -> F:
         return click.option(
-            "--explicit-links",
-            is_flag=True,
+            "--explicit-links/--no-explicit-links",
+            default=None,
             help="Render @mentions and PR references as explicit Markdown links.",
         )(f)
 
@@ -2085,8 +2087,8 @@ def _show_entries_export(
     help="Disable type emoji in entry output.",
 )
 @click.option(
-    "--explicit-links",
-    is_flag=True,
+    "--explicit-links/--no-explicit-links",
+    default=None,
     help="Render @mentions and PR references as explicit Markdown links.",
 )
 @click.pass_obj
@@ -2099,13 +2101,16 @@ def show_entries(
     banner: bool,
     compact: Optional[bool],
     no_emoji: bool,
-    explicit_links: bool,
+    explicit_links: Optional[bool],
 ) -> None:
     """Display changelog entries in tables, cards, or export formats."""
 
+    config = ctx.ensure_config()
     view_choice = view_flags[-1] if view_flags else "table"
     if view_choice not in {"table", "card", "markdown", "json"}:
         raise click.ClickException(f"Unsupported view '{view_choice}'.")
+    # Resolve explicit_links: CLI flag overrides config default
+    resolved_explicit_links = config.explicit_links if explicit_links is None else explicit_links
     run_show_entries(
         ctx,
         identifiers=identifiers,
@@ -2115,7 +2120,7 @@ def show_entries(
         banner=banner,
         compact=compact,
         include_emoji=not no_emoji,
-        explicit_links=explicit_links,
+        explicit_links=resolved_explicit_links,
     )
 
 
@@ -3116,15 +3121,18 @@ def release_create_cmd(
     release_date: Optional[datetime],
     intro_file: Optional[Path],
     compact: Optional[bool],
-    explicit_links: bool,
+    explicit_links: Optional[bool],
     assume_yes: bool,
     version_bump: Optional[str],
 ) -> None:
     """Create or update a release manifest from unused entries."""
 
+    config = ctx.ensure_config()
     click_ctx = click.get_current_context()
     title_explicit = click_ctx.get_parameter_source("title") != ParameterSource.DEFAULT
     compact_explicit = click_ctx.get_parameter_source("compact") != ParameterSource.DEFAULT
+    # Resolve explicit_links: CLI flag overrides config default
+    resolved_explicit_links = config.explicit_links if explicit_links is None else explicit_links
     create_release(
         ctx,
         version=version,
@@ -3133,7 +3141,7 @@ def release_create_cmd(
         release_date=release_date,
         intro_file=intro_file,
         compact=compact,
-        explicit_links=explicit_links,
+        explicit_links=resolved_explicit_links,
         assume_yes=assume_yes,
         version_bump=version_bump,
         title_explicit=title_explicit,
@@ -3362,13 +3370,14 @@ def release_notes_cmd(
     format_choice: str,
     compact: Optional[bool],
     no_emoji: bool,
-    explicit_links: bool,
+    explicit_links: Optional[bool],
 ) -> None:
     """Display release notes for a release or the unreleased bucket.
 
     If no identifier is provided, shows notes for the latest release.
     """
 
+    config = ctx.ensure_config()
     resolved_identifier = identifier
     if resolved_identifier is None:
         latest = _latest_semver(ctx.project_root)
@@ -3379,6 +3388,8 @@ def release_notes_cmd(
 
     click_ctx = click.get_current_context()
     compact_explicit = click_ctx.get_parameter_source("compact") != ParameterSource.DEFAULT
+    # Resolve explicit_links: CLI flag overrides config default
+    resolved_explicit_links = config.explicit_links if explicit_links is None else explicit_links
     view_choice = cast(Literal["markdown", "json"], format_choice or "markdown")
     render_release_notes(
         ctx,
@@ -3386,7 +3397,7 @@ def release_notes_cmd(
         view=view_choice,
         compact=compact,
         include_emoji=not no_emoji,
-        explicit_links=explicit_links,
+        explicit_links=resolved_explicit_links,
         compact_explicit=compact_explicit,
     )
 
