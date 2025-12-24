@@ -1,0 +1,6 @@
+created: 2025-12-24
+title: Configurable Link Formatting
+intro: >-
+  This release adds persistent configuration support for explicit link formatting,
+  allowing projects to set a default link rendering style in `config.yaml` that applies
+  across all commands.
