@@ -1,0 +1,5 @@
+created: 2025-12-30
+title: Configurable Metadata Detection
+intro: >-
+  This release adds configuration options to disable automatic PR and author detection,
+  giving projects more control over changelog entry metadata.
